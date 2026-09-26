@@ -1,0 +1,31 @@
+{
+	"name": "pi-state",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"description": "State compression for pi: bounds a coding agent's prompt by replacing its transcript each turn with a small durable JSON document (Sigma) instead of full history.",
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"scripts": {
+		"clean": "rm -rf dist",
+		"build": "tsc -p tsconfig.build.json",
+		"check": "biome check --write --error-on-warnings . && tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": ["dist"],
+	"devDependencies": {
+		"@biomejs/biome": "2.3.5",
+		"@types/node": "22.19.19",
+		"typescript": "5.9.3",
+		"vitest": "4.1.11"
+	}
+}
