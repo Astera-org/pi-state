@@ -1,0 +1,127 @@
+/**
+ * ENG-1278 (Astera-org/sproot): ONE tool-cycle pairing rule, stated apart from any message
+ * shape.
+ *
+ * A bounded prompt is cut on cycle boundaries, and a cycle may only be cut out if it is
+ * already fully paired: every call this assistant made is answered, none twice, none by a
+ * result it did not request, and no result arrives without an id. An unmatched
+ * `tool_call_id` in what goes out is a provider 400, not a smaller prompt.
+ *
+ * THERE IS ONE CALLER TODAY — `stateboundary.ts`, over pi's native message shape. Sproot's
+ * ENG-1278 collapsed this rule out of two copies (the second was a `statewindow.ts` fetch
+ * wrapper's, over the openai-completions wire shape a request rewrite saw), and ENG-1294
+ * then retired that whole delivery mechanism along with its adapter. So the "two shapes"
+ * this file was extracted for are now one.
+ *
+ * IT IS STILL ITS OWN FILE, and the reason is a testing seam rather than a second caller.
+ * `pairing.test.ts` drives the rule through a synthetic three-question shape — `c` makes
+ * calls, `r` answers one — so a rule bug is caught without going through anybody's adapter,
+ * and two review findings from the module's history stay pinned as named cases: a cycle
+ * accepted on "at least one result followed", and an id-less call with zero results let
+ * through. Inlining the rule into `stateboundary.ts` would put that coverage behind the
+ * pi-native adapter, which is the thing ENG-1278 bought and the thing the adapter table in
+ * `stateboundary.test.ts` is separately for. The two failure modes stay separable: an
+ * adapter bug misreads one shape, a rule bug is wrong for every shape at once.
+ *
+ * THE REFUSAL IS A CODE, NOT A SENTENCE. Each caller renders it in its own vocabulary —
+ * `toolCallId` is pi's field name, `tool_call_id` was the retired wire's — and the rendered
+ * text is a captured format on sproot's side: it reaches pi's transcript, is normalized by
+ * `internal/trace`, rendered on the dashboard's state-loop panel and asserted verbatim there.
+ * The core decides WHAT is wrong; the caller says it in its own words. A second shape would
+ * add an adapter here, not a second rule.
+ */
+
+/** Why a run of messages cannot be cut into paired cycles. */
+export type PairingRefusal =
+	/** A result arrived with no call before it to answer. */
+	| { code: "stray-result"; at: number }
+	/** A call whose id is missing or unusable, so the cycle cannot be verified at all. */
+	| { code: "unverifiable-call"; at: number }
+	/** A result that names no call. */
+	| { code: "result-without-id"; at: number }
+	| { code: "answered-twice"; at: number; id: string }
+	/** `at` is the ASSISTANT message, because that is where the unanswered call was made. */
+	| { code: "unanswered-call"; at: number; id: string }
+	/** `at` is the ASSISTANT message the unrequested result followed. */
+	| { code: "unrequested-result"; at: number; id: string };
+
+/** One `assistant(calls)` message plus the contiguous run of results answering it. */
+export interface PairedCycle {
+	start: number;
+	/** Inclusive index of the last result in the cycle. */
+	end: number;
+}
+
+/**
+ * What a caller's message shape has to answer. Three questions, and deliberately no more —
+ * anything else a caller needs about a message it reads for itself, off its own array.
+ *
+ * The indices are into the caller's own list, so what comes back addresses the messages the
+ * caller handed in.
+ */
+export interface PairingShape {
+	length: number;
+	/** Does the message at `i` answer a call? */
+	isResult(i: number): boolean;
+	/**
+	 * The call ids the message at `i` asks for: `null` when it asks for none (so it is not the
+	 * head of a cycle), `"unverifiable"` when it makes a call whose id cannot be read.
+	 *
+	 * `"unverifiable"` is a distinct answer rather than an empty list because an empty list is
+	 * indistinguishable from "asked for nothing", and that collapse is exactly the historical
+	 * defect this rule closes: with no ids to iterate, the arity check below reduces to
+	 * `0 !== 0` and a malformed cycle passes.
+	 */
+	callIds(i: number): readonly string[] | "unverifiable" | null;
+	/** The id the result at `i` answers, or null when it carries none usable. */
+	resultId(i: number): string | null;
+}
+
+/**
+ * Segment a run of messages into complete tool cycles, refusing anything not already fully
+ * paired.
+ *
+ * THE MATCH IS ON THE ID SET, not on "at least one result arrived". An assistant message can
+ * carry N calls, so a run of fewer results than calls is a cycle whose cut would send a call
+ * nothing answers.
+ *
+ * A refusal is not an error. It means a paired window cannot be PROVEN cuttable out of these
+ * messages, and each caller has its own safe fallback: a request rewriter would forward the
+ * original body, and the transcript boundary keeps Σ alone, which needs no pairing.
+ */
+export function pairCycles(shape: PairingShape): { cycles: PairedCycle[] } | { refusal: PairingRefusal } {
+	const cycles: PairedCycle[] = [];
+	let i = 0;
+	while (i < shape.length) {
+		if (shape.isResult(i)) return { refusal: { code: "stray-result", at: i } };
+		const calls = shape.callIds(i);
+		if (calls === null) {
+			i++;
+			continue;
+		}
+		if (calls === "unverifiable") return { refusal: { code: "unverifiable-call", at: i } };
+
+		let j = i + 1;
+		const answered = new Set<string>();
+		while (j < shape.length && shape.isResult(j)) {
+			const id = shape.resultId(j);
+			if (id === null) return { refusal: { code: "result-without-id", at: j } };
+			if (answered.has(id)) return { refusal: { code: "answered-twice", at: j, id } };
+			answered.add(id);
+			j++;
+		}
+
+		for (const id of calls) {
+			if (!answered.has(id)) return { refusal: { code: "unanswered-call", at: i, id } };
+			answered.delete(id);
+		}
+		// Whatever is left answered a call this assistant never made. Checked AFTER the deletes,
+		// so the set holds exactly the unrequested ids.
+		const extra = answered.values().next();
+		if (!extra.done) return { refusal: { code: "unrequested-result", at: i, id: extra.value } };
+
+		cycles.push({ start: i, end: j - 1 });
+		i = j;
+	}
+	return { cycles };
+}
