@@ -7,23 +7,35 @@
 //     SPROOT_STATE_LOOP/SPROOT_PI_STATE_WINDOW/SPROOT_PI_STATE_WINDOW_CYCLES strings; one
 //     row (a misspelled mode variable) is dropped because it tested exact-string env
 //     parsing that moved out of the core entirely.
-//   - Three tests replayed a recording captured from a pinned `pi-state` binary
-//     (`scripts/testdata/eng1269/pi-ordering.json` in sproot, via
-//     `scripts/eng1269_pi_ordering_probe.mjs`) to prove this module's assumption about
-//     what pi's own branch looks like at `tool_result` versus `turn_end`. Neither the
-//     recording nor the probe exists in this repo — capturing one needs the pinned
-//     `pi-state` fork sproot builds, which is out of scope here — so the two invariants
-//     that recording proved (plan on `turn_end`, not `tool_result`; two commits in one
-//     turn collapse to one boundary) are re-proven below with hand-built fixtures
-//     instead. That is a weaker guarantee than a measurement against the real binary, and
-//     is recorded as a gap for whoever builds the standalone entrypoint against a pinned
-//     `pi-state` — that work has the binary to re-capture against.
-//   - The "bytes probe" describe block (`scripts/eng1248_pi_state_bytes_probe.mjs`) is
-//     dropped for the same reason: it belongs to sproot's own build probe, not this
-//     module.
+//   - `scripts/testdata/eng1269/pi-ordering.json` — a recording of a real pinned
+//     `pi-state` binary's event/branch snapshots around one `state_commit` turn, captured
+//     by sproot's `scripts/eng1269_pi_ordering_probe.mjs` — is copied in under
+//     `test/testdata/eng1269/`. It is portable data (pi's own message shapes) with no
+//     dependency on sproot's build or runtime, and it is what pins this module's
+//     assumption about pi's own behavior to a measurement rather than a belief: that the
+//     branch at `tool_result` is UNPAIRED (the closing tool result not yet persisted) and
+//     the branch at `turn_end` is complete. `eng1269_pi_ordering_probe.mjs` itself (which
+//     drives the pinned binary to regenerate the recording) is NOT ported — this repo has
+//     no pinned `pi-state` fork to drive — so the recording here can go stale the next
+//     time sproot bumps that pin; re-capturing it is sproot's job.
+//   - The "bytes probe" describe block (`scripts/eng1248_pi_state_bytes_probe.mjs`, 8
+//     tests) is dropped: unlike the recording above, that script's `retentionVerdict` is
+//     a helper for sproot's OWN build probe (which spawns the pinned binary against a
+//     stub HTTP provider), not a test of this module's exported surface, so porting it
+//     here would just be re-implementing another repo's harness.
+//   - "the record the Go capture side reads > is the SAME custom entry type the window
+//     writes" is dropped — it read `stateindex.ts` off disk to prove a boundary record is
+//     routed through the window's own writer, and that entrypoint isn't built here. The
+//     constant it was really guarding (`STATE_WINDOW_ENTRY_TYPE === "sproot-state-window"`)
+//     is asserted directly in `statewindow.test.ts`.
 //   - `TOOL_PREFIX` came from sproot's `index.ts` entrypoint, which this repo does not
 //     build; the one test that used it now spells the MCP tool name literally.
+//
+// Net: 49 of the original 59 cases ported (10 dropped, all above; 2 renamed for the
+// options-object vocabulary) — verified against a leaf-test-name diff of this file against
+// `node --test` run over the original .mjs.
 
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
 	type BoundaryAPI,
@@ -327,6 +339,63 @@ function fakePi(overrides: Partial<BoundaryAPI> = {}): BoundaryAPI & {
 
 const ctxWith = (branch: unknown[]) => ({ sessionManager: { getBranch: () => branch } });
 
+/**
+ * WHAT PI DOES, RECORDED. Everything else in this file is synthetic on purpose: it
+ * asserts what THIS MODULE decides, and a malformed shape a real session would never
+ * produce is the point of the refusal table above. What could not be synthetic, and was,
+ * is the branch pi HANDS US at each event.
+ *
+ * `scripts/eng1269_pi_ordering_probe.mjs` (sproot) drove the pinned binary through a real
+ * `state_commit` cycle and wrote down the event pi delivered and the branch
+ * `getBranch()` held at that moment. The replay below drives this module against that,
+ * so the ordering is pinned to a measurement instead of to the author's belief about
+ * one — which is the defect this recording exists for: a module that planned on
+ * `tool_result`, where the last cycle is unpaired, would collapse every boundary to Σ
+ * alone, and eleven checks stayed green in sproot's history because every hand-built
+ * fixture contained the finished cycle.
+ */
+const RECORDING = JSON.parse(readFileSync(new URL("./testdata/eng1269/pi-ordering.json", import.meta.url), "utf8"));
+
+/** One recorded arm's snapshots, with the entry pool resolved back into whole branches. */
+function recordedTurn(arm: string) {
+	const recorded = RECORDING.ordering?.[arm];
+	expect(recorded, `the recording holds no ${arm} arm`).toBeTruthy();
+	return recorded.snapshots.map((snapshot: { event: string; payload: unknown; branch: string[] }) => ({
+		event: snapshot.event,
+		payload: snapshot.payload,
+		branch: snapshot.branch.map((id) => {
+			const entry = recorded.entries[id];
+			expect(
+				entry,
+				`${arm}'s ${snapshot.event} snapshot names ${id}, which the entry pool does not hold`,
+			).toBeTruthy();
+			return entry;
+		}),
+	}));
+}
+
+/**
+ * Replay a recorded turn through the REAL Σ cache and the boundary writer, handing each
+ * handler the event pi delivered and the branch pi held when it did.
+ *
+ * The cache is the real one rather than a `sigma` dep, so the arming predicate reads a
+ * recorded `tool_result` — its tool name, its `isError`, its bytes — instead of a
+ * hand-written object shaped like one.
+ */
+function replayRecordedTurn(arm: string, options: StateWindowOptions, record?: (data: unknown) => void) {
+	const pi = fakePi();
+	let branch: unknown[] = [];
+	installStateCommitCache(pi);
+	installStateBoundary(pi, options, record, { branch: () => branch, now: () => 1 });
+	const afterEach: string[] = [];
+	for (const snapshot of recordedTurn(arm)) {
+		branch = snapshot.branch;
+		for (const h of pi.handlers) if (h.event === snapshot.event) h.handler(snapshot.payload, null);
+		afterEach.push(`${snapshot.event}:${pi.calls.length}`);
+	}
+	return { pi, afterEach };
+}
+
 describe("writeBoundary", () => {
 	const cfg = { cycles: 2 };
 	const tally = { requests: 1, rewrites: 0, refusals: 0 };
@@ -525,26 +594,49 @@ describe("installStateBoundary", () => {
 		expect(lines[0]).toContain("[condition=mode fault=yes]");
 	});
 
-	test("plans on turn_end, not tool_result — a boundary is never written before the turn completes", () => {
-		// The invariant a real entrypoint's event choice depends on: at `tool_result` pi has
-		// not yet persisted the closing tool result, so planning there would read an
-		// UNPAIRED branch and collapse retention to Σ alone on every turn. This module's
-		// own structure is what actually guarantees it — `writeBoundary` is called from
-		// nowhere but the `turn_end` handler — so this is a regression guard against that
-		// moving, not a measurement against a real pi binary's branch snapshots (that
-		// measurement lives in sproot's own recorded-turn replay, which needs the pinned
-		// `pi-state` fork this repo does not build).
-		const pi = fakePi();
+	/**
+	 * THE EVENT-ORDER REGRESSION, replayed from the recording rather than from a fixture.
+	 *
+	 * The branch the `tool_result` handler sees and the branch the `turn_end` handler
+	 * sees are both pi's own, taken from the pinned binary mid-cycle. A module that
+	 * plans on `tool_result` reads the first, cannot pair it, and collapses to Σ
+	 * alone — which is what sproot's history shipped once. Asserting the boundary COUNT
+	 * after each event and then the retained ROLES is what makes that fail here: a count
+	 * alone passes on the collapse, and roles alone would not notice a boundary written
+	 * one event too early.
+	 */
+	test("plans on turn_end, not tool_result — the branch pi held at each, recorded from the binary", () => {
 		resetStateCommitCache();
-		installStateCommitCache(pi);
-		const sigma = cached(4, '{"step":1}');
-		installStateBoundary(pi, options, undefined, { branch: () => branchWith(1), now: () => 1 });
+		const { pi, afterEach } = replayRecordedTurn("single-cycle", options);
+		expect(
+			afterEach,
+			"a boundary was planned where pi has not yet persisted the closing tool result, or a turn that accepted nothing wrote one",
+		).toEqual(["tool_result:0", "turn_end:1", "turn_end:1"]);
+		expect(
+			pi.calls[0]!.messages.map((m) => (m as { role: string }).role),
+			"retention collapsed: the boundary carries Σ without the cycle it was supposed to keep",
+		).toEqual(["user", "user", "assistant", "toolResult"]);
+	});
 
-		for (const h of pi.handlers) if (h.event === "tool_result") h.handler(commitEvent(sigma), null);
-		expect(pi.calls.length, "tool_result must only ARM the boundary, never write it").toBe(0);
-
-		for (const h of pi.handlers) if (h.event === "turn_end") h.handler({}, null);
-		expect(pi.calls.length, "turn_end must write the boundary once armed").toBe(1);
+	/**
+	 * The module's assumption, stated against the recording instead of against a comment
+	 * that could drift from it: at `tool_result` the closing result is NOT on the branch,
+	 * and at `turn_end` it is. If a re-capture ever shows otherwise, this is the test that
+	 * says so in pi's terms rather than leaving it to be diagnosed from a collapsed
+	 * boundary.
+	 */
+	test("records a branch whose closing tool result is absent at tool_result and present at turn_end", () => {
+		const [atToolResult, atTurnEnd] = recordedTurn("single-cycle");
+		expect(heldMessages(atToolResult.branch).map((m) => m.role)).toEqual(["user", "assistant"]);
+		expect(heldMessages(atTurnEnd.branch).map((m) => m.role)).toEqual(["user", "assistant", "toolResult"]);
+		expect(
+			"reason" in segmentCycles(heldMessages(atToolResult.branch)),
+			"the recorded tool_result branch pairs — the whole reason the boundary is planned on turn_end is that it does not",
+		).toBe(true);
+		expect(
+			"cycles" in segmentCycles(heldMessages(atTurnEnd.branch)),
+			"the recorded turn_end branch does not pair",
+		).toBe(true);
 	});
 
 	/**
@@ -634,28 +726,30 @@ describe("installStateBoundary", () => {
 		).toBe(0);
 	});
 
-	// The invariant, stated as what it IS: not "one per accepted commit" — two
-	// `state_commit` calls CAN land in one turn (parallel tool calls), and they collapse to
-	// one boundary carrying the newest Σ. That is correct rather than a rounding: Σ is
-	// CAS-versioned, so the later commit supersedes the earlier one. Built from two
-	// `tool_result` events firing before the turn's single `turn_end`, standing in for the
-	// recorded parallel-call turn a real pi produces.
+	// The invariant, stated as what it IS and replayed from the recording. Not "one per
+	// accepted commit" — two `state_commit` calls CAN land in one turn (parallel tool
+	// calls), which the parallel-cycle arm records as two `tool_result` events and one
+	// `turn_end`, and they collapse to one boundary carrying the newest Σ. That is correct
+	// rather than a rounding: Σ is CAS-versioned, so the later commit supersedes the
+	// earlier one.
 	test("writes one boundary per TURN that accepted a commit, carrying the newest Σ", () => {
-		const pi = fakePi();
 		const records: unknown[] = [];
 		resetStateCommitCache();
-		installStateCommitCache(pi);
-		installStateBoundary(pi, options, (d) => records.push(d), { branch: () => branchWith(1), now: () => 1 });
-
-		const first = cached(2, '{"step":1}', "c-a");
-		const second = cached(3, '{"step":2}', "c-b");
-		for (const h of pi.handlers) if (h.event === "tool_result") h.handler(commitEvent(first), null);
-		for (const h of pi.handlers) if (h.event === "tool_result") h.handler(commitEvent(second), null);
-		expect(pi.calls.length, "two commits in one turn wrote a boundary before turn_end").toBe(0);
-		for (const h of pi.handlers) if (h.event === "turn_end") h.handler({}, null);
-
-		expect(pi.calls.length, "two commits in one turn did not collapse to exactly one boundary").toBe(1);
-		expect((records[0] as { stateVersion: number }).stateVersion, "the boundary carries the newest Σ").toBe(3);
+		const { pi, afterEach } = replayRecordedTurn("parallel-cycle", options, (d) => records.push(d));
+		expect(afterEach, "two commits in one recorded turn did not collapse to exactly one boundary").toEqual([
+			"tool_result:0",
+			"tool_result:0",
+			"turn_end:1",
+			"turn_end:1",
+		]);
+		expect(
+			(records[0] as { stateVersion: number }).stateVersion,
+			"the boundary carries the older Σ, not the newest",
+		).toBe(2);
+		expect(
+			pi.calls[0]!.messages.map((m) => (m as { role: string }).role),
+			"the retained multi-call cycle lost a result",
+		).toEqual(["user", "user", "assistant", "toolResult", "toolResult"]);
 	});
 
 	test("writes nothing for a turn that accepted no commit, and leaves every other tool result alone", () => {
@@ -733,5 +827,87 @@ describe("installStateBoundary", () => {
 		for (const h of pi.handlers) {
 			expect(h.handler(commitEvent(only), null)).toBeUndefined();
 		}
+	});
+});
+
+describe("the byte count is counted, never materialized", () => {
+	// `bytesBefore` and `bytesAfter` are HELD versus SENT, and how they are counted decides
+	// how much transcript fits under pi's heap limit. These two moved into this module
+	// with sproot's ENG-1294: the subject is the byte counter, which used to be
+	// `statewindow.ts`'s `byteLength` over a request body and is now this module's
+	// `messagesBytes` over the held branch — the retired rewrite took the counter it
+	// measured with it.
+	const multibyte = (n: number) => "héllo 日本 \u{1F600} ".repeat(n);
+	const cfg = { cycles: 2 };
+	const tally = { requests: 1, rewrites: 0, refusals: 0 };
+	const branchSaying = (text: string) => [msgEntry(user(text)), ...branchWith(3).slice(1)];
+
+	test("agrees with TextEncoder on every shape, unpaired surrogates included", () => {
+		// `Buffer.byteLength` is only safe in place of `TextEncoder#encode().length` because
+		// the two counts are identical. An unpaired surrogate is the case where a counter
+		// could reasonably differ (it is not encodable): both spend U+FFFD's three bytes on
+		// it.
+		for (const text of [
+			"",
+			"ascii only",
+			multibyte(3),
+			"a\uD800b",
+			"a\uDC00b",
+			"abc\uD83D",
+			"\uDC00\uD800",
+			"a\u{1F600}b\uD800c日",
+		]) {
+			const branch = branchSaying(text);
+			const rec = writeBoundary(
+				fakePi(),
+				cfg,
+				tally,
+				{ branch: () => branch, sigma: () => cached(9, '{"a":1}'), now: () => 42 },
+				null,
+			);
+			expect("failed" in rec ? rec.reason : undefined, JSON.stringify(text)).toBeUndefined();
+			expect(
+				"bytesBefore" in rec ? rec.bytesBefore : undefined,
+				`bytesBefore disagrees with TextEncoder for ${JSON.stringify(text)}`,
+			).toBe(new TextEncoder().encode(JSON.stringify(heldMessages(branch))).length);
+		}
+	});
+
+	test("never builds a byte copy of the held transcript", () => {
+		// Narrow by construction: it watches the two ways a Node module reaches for the
+		// bytes of a string — TextEncoder#encode and Buffer.from — and nothing else. It
+		// cannot prove no whole-transcript copy is made by some third route; it does fail
+		// on the one that was there, which is what a guard on a fixed regression is for.
+		const branch = branchSaying(multibyte(2000));
+		const held = JSON.stringify(heldMessages(branch));
+		const seen: number[] = [];
+		const realEncode = TextEncoder.prototype.encode;
+		const realFrom = Buffer.from;
+		TextEncoder.prototype.encode = function (this: InstanceType<typeof TextEncoder>, input?: string) {
+			seen.push(String(input ?? "").length);
+			return realEncode.call(this, input);
+		};
+		Buffer.from = ((...args: any[]) => {
+			if (typeof args[0] === "string") seen.push(args[0].length);
+			return (realFrom as (...a: any[]) => Buffer)(...args);
+		}) as any;
+		let rec: ReturnType<typeof writeBoundary>;
+		try {
+			rec = writeBoundary(
+				fakePi(),
+				cfg,
+				tally,
+				{ branch: () => branch, sigma: () => cached(9, '{"a":1}'), now: () => 42 },
+				null,
+			);
+			expect("failed" in rec ? rec.reason : undefined).toBeUndefined();
+		} finally {
+			TextEncoder.prototype.encode = realEncode;
+			Buffer.from = realFrom;
+		}
+		const biggest = seen.length ? Math.max(...seen) : 0;
+		expect(biggest, `an allocation of ${biggest} chars was made over a ${held.length}-char transcript`).toBeLessThan(
+			held.length,
+		);
 	});
 });

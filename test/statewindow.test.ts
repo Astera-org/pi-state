@@ -5,12 +5,16 @@
 // `StateWindowOptions` object directly instead of an env-var record, because
 // SPROOT_STATE_LOOP/SPROOT_PI_STATE_WINDOW/SPROOT_PI_STATE_WINDOW_CYCLES no longer exist —
 // turning an environment into that object is now a separate, thin concern outside this
-// module. One case (a misspelled mode variable) is dropped because it tested exact-string
-// env parsing that moved out of the core entirely; one (a raw-JSON schema env var never
-// reaching the window) is dropped because a typed options object cannot carry a field it
-// does not declare, which is the same guarantee by construction rather than by test.
-// Every other case — the kill switch's asymmetry, the cycle depth's strict grammar, Σ
-// selection, the cache's session identity handling, the byte-exact carving — ports 1:1.
+// module. One case ("is off by default, and only the exact string true turns it on") is
+// reworded rather than dropped, since `enabled` is now a real boolean and the exact-string
+// parsing it tested moved out of the core. One case ("there is no schema carrier…") is
+// dropped because a typed options object cannot carry a field it does not declare, which
+// is the same guarantee by construction rather than by test.
+//
+// Net: 31 of the original 32 cases ported (1 dropped, 1 reworded) — verified against a
+// leaf-test-name diff of this file against `node --test` run over the original .mjs. Every
+// other case — the kill switch's asymmetry, the cycle depth's strict grammar, Σ selection,
+// the cache's session identity handling, the byte-exact carving — ports 1:1.
 
 import { describe, expect, test } from "vitest";
 import { STATE_BOUNDARY_SOURCE, sigmaMessage, writeBoundary } from "../src/stateboundary/stateboundary.js";
