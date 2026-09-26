@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { readFileState } from "../src/backend/index.js";
 import { installPiState, type PiExtensionAPI, type PiToolDefinition } from "../src/entrypoint/index.js";
+import { resetStateCommitCache, stateCommitCache } from "../src/stateboundary/index.js";
 
 function fakePi(overrides: Partial<PiExtensionAPI> = {}): PiExtensionAPI & {
 	handlers: Array<{ event: string; handler: (event: unknown, ctx: unknown) => unknown }>;
@@ -172,5 +173,118 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 		const ctx = { sessionManager: { getBranch: () => branch } };
 		for (const h of pi.handlers) if (h.event === "turn_end") h.handler({}, ctx);
 		expect(pi.calls.length).toBe(0);
+	});
+});
+
+describe("restart survival (ENG-1487's acceptance bar): Σ outlives the process", () => {
+	// installStateCommitCache's cache (statewindow.ts's module-level `bound`) is
+	// process-wide, not per-`installPiState` call — two real `pi` processes never share
+	// it, but two `fakePi` installations in the SAME test process would, unless we tear
+	// it down between them exactly like a process exit does. Every case below starts by
+	// discarding whatever a previous install left behind.
+	beforeEach(() => {
+		resetStateCommitCache();
+	});
+
+	test("a fresh process re-seeds Σ from the session's own history, not from anything the first process left in memory", async () => {
+		// --- "process" #1: commits a patch, then is discarded. ---------------------------
+		const firstProcess = fakePi();
+		await installPiState(firstProcess, {
+			schemaPath,
+			statePath,
+			env: { PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
+		});
+		const commitResult = await firstProcess.tools
+			.get("state_commit")!
+			.execute("call-1", { patch: { objective: "ship it", step: 1 }, version: 0 });
+		const commitText = commitResult.content[0]!.text;
+		expect(JSON.parse(commitText)).toMatchObject({ ok: true, version: 1, doc: { objective: "ship it", step: 1 } });
+
+		// It really is on disk: the ONLY thing a real restart could ever recover from.
+		const onDisk = await readFileState(statePath);
+		expect(onDisk.version).toBe(1);
+		expect(onDisk.doc.objective).toBe("ship it");
+
+		// The "process" exits. Nothing from `firstProcess` — its handlers, its tools, its
+		// closures — is reachable from here on; only `resetStateCommitCache()` stands in
+		// for the module-level cache a real restart would never have inherited either.
+		resetStateCommitCache();
+		expect(stateCommitCache().latest(), "a fresh process starts with no Σ cached at all").toBeNull();
+
+		// --- "process" #2: a brand-new installation against the SAME state file. ---------
+		const secondProcess = fakePi();
+		const logs: string[] = [];
+		await installPiState(secondProcess, {
+			schemaPath,
+			statePath,
+			env: { PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
+			log: (m) => logs.push(m),
+		});
+
+		// pi reloads the session's transcript on `session_start` — which is what a resumed
+		// (or newly started, same working directory) session looks like: the branch it
+		// held already carries the FIRST process's commit, persisted the same way any
+		// `toolResult` entry survives a reload (see statewindow.ts's seedStateCommitCache).
+		const historicalToolResult = toolResultMsg("call-1", "state_commit", commitText);
+		const preRestartBranch = [
+			msgEntry(userMsg("go")),
+			msgEntry(callMsg("call-1", "state_commit")),
+			msgEntry(historicalToolResult),
+		];
+		const sessionStartCtx = { sessionManager: { getSessionId: () => "S1", getBranch: () => preRestartBranch } };
+		for (const h of secondProcess.handlers) if (h.event === "session_start") h.handler({}, sessionStartCtx);
+
+		// The reseed alone — before this process has observed a single LIVE tool_result —
+		// already recovered Σ. This is the claim seedStateCommitCache exists to make true;
+		// asserting it directly (rather than only through a later boundary) is what tells
+		// the two survival paths apart if one of them breaks.
+		expect(
+			stateCommitCache().latest(),
+			"session_start's reseed should have recovered the first process's commit from history",
+		).toEqual({ toolName: "state_commit", toolCallId: "call-1", text: commitText });
+
+		// Now the turn that was interrupted by the "restart" completes: this process
+		// observes the tool_result for the very call the first process already executed
+		// and persisted (a real `pi` resuming mid-turn delivers exactly this — the result
+		// already exists, only the turn's own completion was cut short), and then
+		// `turn_end` fires over the branch as it stands now.
+		const toolResultEvent = {
+			type: "tool_result",
+			toolName: "state_commit",
+			toolCallId: "call-1",
+			isError: false,
+			content: [{ type: "text", text: commitText }],
+		};
+		const turnCtx = { sessionManager: { getBranch: () => preRestartBranch } };
+		for (const h of secondProcess.handlers) if (h.event === "tool_result") h.handler(toolResultEvent, turnCtx);
+		for (const h of secondProcess.handlers) if (h.event === "turn_end") h.handler({}, turnCtx);
+
+		// The boundary fired, and it carries the SAME Σ the first process committed — not
+		// an empty one, and not a fresh version-0 document.
+		expect(secondProcess.calls.length).toBe(1);
+		const { messages, options } = secondProcess.calls[0]!;
+		expect((options as Record<string, unknown>).deliverAs).toBe("steer");
+		const sigma = messages[0] as { role: string; content: string };
+		expect(sigma.role).toBe("user");
+		expect(sigma.content).toContain("version 1");
+		expect(sigma.content).toContain('"objective":"ship it"');
+		expect(sigma.content).toContain('"step":1');
+	});
+
+	test("state_get on the restarted process reads the persisted version/doc straight off disk", async () => {
+		const firstProcess = fakePi();
+		await installPiState(firstProcess, { schemaPath, statePath });
+		await firstProcess.tools.get("state_commit")!.execute("call-1", { patch: { objective: "ship it" }, version: 0 });
+
+		resetStateCommitCache();
+
+		// This path needs no session replay at all — the file backend is the whole of it —
+		// but ENG-1487's bar is "survives a restart", so it is worth confirming explicitly
+		// rather than assuming a passing file-backend test elsewhere covers this too.
+		const secondProcess = fakePi();
+		await installPiState(secondProcess, { schemaPath, statePath });
+		const getResult = await secondProcess.tools.get("state_get")!.execute("get-1", {});
+		const getPayload = JSON.parse(getResult.content[0]!.text);
+		expect(getPayload).toMatchObject({ exists: true, version: 1, doc: { objective: "ship it" } });
 	});
 });
