@@ -45,13 +45,100 @@ are ported as `camelCase` (`parseSchema`, `merge`, `marshal`, ...) per TypeScrip
 convention; types stay `PascalCase` (`Schema`, `Field`, `Kind`, `Carriage`). Same words,
 different case, so a reader can find the Go source a given export was ported from.
 
-### What isn't here yet
+## `src/backend`
 
-This package is being built up incrementally. Not yet included: a storage backend (a
-file-backed store, mirroring sproot's Postgres/in-memory `agent_state`), the pi
-extension registration itself (MCP tool wiring, the transcript boundary, session
-replay), and `stateboundary.ts` / `statewindow.ts` / `pairing.ts`. Those land in
-follow-up work on top of the core in `src/agentstate`.
+Σ storage as a JSON file in pi's working directory — the standalone replacement for
+sproot's Postgres/in-memory `agent_state` table. `commitFileState` reads the current
+document, merges a patch through `src/agentstate`'s own `merge`, and writes the result
+back with a version counter; `readFileState` answers `state_get`'s "before the first
+commit" shape (`exists: false, version: 0, doc: {}`) for a missing **or corrupt** file,
+rather than throwing.
+
+Writes go through a fixed temp path (`<path>.tmp`) created with an exclusive (`O_EXCL`)
+flag, then an atomic rename onto the real path. That one mechanism buys two properties:
+the rename means a reader never observes a torn write, and the temp path's exclusive
+create doubles as the mutex a compare-and-set needs — two commits racing against the same
+stale version both try to open the same temp path, only one wins at a time, and the loser
+re-reads the current version once it gets in and finds it has moved. No second lock file.
+
+A compare-and-set names the version it read; a mismatch is refused with the same wording
+sproot's own store uses (`internal/store/{memory,postgres}_agentstate.go`):
+
+```
+commit named version 3 and the stored version is 4: this agent state commit was decided
+against a version that has since changed — read the current state and retry
+```
+
+so an agent's retry-on-conflict logic does not depend on which backend is underneath. The
+first commit against a missing file must name version 0, exactly like a first commit
+against sproot's Postgres row.
+
+## `src/entrypoint`
+
+The actual pi extension — the piece that makes this package a runnable, standalone
+extension with no sproot, no Postgres, and no MCP round trip. `installPiState` (the
+module's default export, so `package.json`'s `"pi": {"extensions": [...]}` field can load
+it directly):
+
+- registers `state_get` and `state_commit` as **local** pi tools (`pi.registerTool`,
+  bare names — no `mcp__...`-style prefix, since there is no MCP server here to prefix a
+  name after) backed by `src/backend`'s file backend;
+- generates `state_commit`'s input JSON Schema from the loaded schema file
+  (`src/entrypoint/patchschema.ts`): one property per declared key, each unioned with
+  `null` (a null value is how a patch deletes a key), and `additionalProperties: false`
+  for the closed key set — ported from sproot's `internal/mcp/agentstate.go`
+  (`stateCommitPatchSchema`), minus `action_summary`, which is sproot's operator
+  action-log field and has no standalone equivalent;
+- installs the transcript boundary (`src/stateboundary`'s `installStateBoundary`),
+  configured from this repo's own environment variables (below) rather than any
+  `SPROOT_*` name;
+- does **not** call MCP `connect()`, write a receipt file, or register a provider — this
+  entrypoint is narrower than sproot's bridge by design.
+
+**File layout.** Two files, both under one directory (`.pi-state/`) so a user can
+`.gitignore` or inspect this extension's whole footprint as a unit, relative to pi's
+working directory:
+
+| File | Purpose | Override |
+| --- | --- | --- |
+| `.pi-state/schema.json` | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`) | `PiStateOptions.schemaPath` |
+| `.pi-state/state.json` | Σ itself, as `src/backend` reads and writes it | `PiStateOptions.statePath` |
+
+The schema file is **required** — there is no sane default (a schema with no keys refuses
+every non-empty patch), so a missing one fails installation loudly with an actionable
+message rather than silently registering a `state_commit` that can never succeed.
+
+**Environment variables.** Deliberately neutral names, not `SPROOT_*` — there is no
+sproot adapter here writing a separate "mode" variable and a separate operator kill
+switch, so the two collapse into one flag:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `PI_STATE_LOOP` | the state loop's on/off switch. Kill-switch semantics: unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it **on**; a recognized negative (`0`/`false`/`no`/`off`) turns it off; anything else is unrecognized and also refuses (fail closed) | **on** |
+| `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ after a boundary | `4` |
+
+Defaulting `PI_STATE_LOOP` to **on** (rather than requiring explicit opt-in) is a
+deliberate choice: the ticket's acceptance bar is "pi plus the extension bounds the
+prompt" with no configuration required, so installing this extension with zero env vars
+already does that.
+
+**Loud refusal.** At install time, if this `pi` exposes no `replaceTranscript`,
+`installPiState` **throws** rather than silently declining — this is a distinct,
+louder signal than the boundary's own ladder of quiet log-and-skip reasons (kill switch
+off, a malformed cycle count), because every one of those is a legitimate configuration
+choice on a `pi` that *could* run the loop, while a missing `replaceTranscript` means this
+host fundamentally cannot, however it is configured. The throw happens before the schema
+file is even read, so a caller sees it immediately and cannot mistake it for one of the
+ordinary off conditions logged to stderr.
+
+**A known gap versus sproot's MCP path.** pi coerces a tool call's arguments against the
+JSON Schema `parameters` advertises *before* `execute` is reached, so `state_commit`'s
+`patch` argument arrives as an already-parsed JS value — a JS `number`, not the exact
+source digits `src/agentstate`'s own parser preserves. sproot's MCP path takes the patch
+as `json.RawMessage` straight off the wire and never loses precision; a local pi tool has
+no equivalent raw-bytes hook, so an arbitrary-precision number in a `state_commit` call
+here is rendered through `String(n)` on whatever pi's own JSON parsing already produced.
+This is a real, accepted limitation of the local-tool surface, not an oversight.
 
 ## Development
 
