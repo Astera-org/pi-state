@@ -289,13 +289,9 @@ describe("restart survival (ENG-1487's acceptance bar): Σ outlives the process"
 	});
 });
 
-describe("auto mode (schema.autoMaxStateBytes): resolving maxStateBytes from a context window", () => {
+describe("auto sizing (the default for a schema with no maxStateBytes): resolving it from a context window", () => {
 	async function writeAutoSchema(overrides: Record<string, unknown> = {}): Promise<void> {
-		await writeFile(
-			schemaPath,
-			JSON.stringify({ autoMaxStateBytes: true, keys: { objective: { type: "string" } }, ...overrides }),
-			"utf8",
-		);
+		await writeFile(schemaPath, JSON.stringify({ keys: { objective: { type: "string" } }, ...overrides }), "utf8");
 	}
 
 	async function maxStateBytesFromStateGet(pi: ReturnType<typeof fakePi>): Promise<number> {
@@ -339,7 +335,7 @@ describe("auto mode (schema.autoMaxStateBytes): resolving maxStateBytes from a c
 		expect(await maxStateBytesFromStateGet(pi)).toBe(200000); // 50% of 100000 tokens * 4 bytes/token
 	});
 
-	test("an explicit maxStateBytes in the schema file always wins over auto mode", async () => {
+	test("an explicit maxStateBytes in the schema file always wins over auto sizing", async () => {
 		await writeAutoSchema({ maxStateBytes: 4096 });
 		const pi = fakePi();
 		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_CONTEXT_WINDOW_TOKENS: "100000" } });

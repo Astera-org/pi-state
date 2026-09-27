@@ -197,13 +197,23 @@ test("parseSchema accepts a maxStateBytes above the old 64 KiB ceiling", () => {
 	expect(schemaCap(s)).toBe(1048576);
 });
 
-test("parseSchema reads autoMaxStateBytes and autoMaxStateBytesPercent", () => {
-	const s = parseSchema(`{"autoMaxStateBytes":true,"autoMaxStateBytesPercent":70,"keys":{"a":{"type":"string"}}}`);
-	expect(s.autoMaxStateBytes).toBe(true);
+test("parseSchema reads autoMaxStateBytesPercent on a schema with no maxStateBytes", () => {
+	const s = parseSchema(`{"autoMaxStateBytesPercent":70,"keys":{"a":{"type":"string"}}}`);
+	expect(s.maxStateBytes).toBeUndefined();
 	expect(s.autoMaxStateBytesPercent).toBe(70);
 	// Not yet resolved into a concrete maxStateBytes: agentstate cannot know the context
-	// window, so schemaCap still falls back to DEFAULT_MAX_STATE_BYTES until a caller
-	// that does know it (src/entrypoint) resolves auto mode.
+	// window, so schemaCap still falls back to DEFAULT_MAX_STATE_BYTES — the last resort
+	// — until a caller that does know it (src/entrypoint) resolves auto sizing.
+	expect(schemaCap(s)).toBe(DEFAULT_MAX_STATE_BYTES);
+});
+
+// Auto sizing is the DEFAULT for a schema that declares no maxStateBytes, not an
+// opt-in — so a schema with neither field at all is exactly as much "auto" as one that
+// declares a percent, just at DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65).
+test("a schema with no maxStateBytes and no autoMaxStateBytesPercent is still auto, at the default percent", () => {
+	const s = parseSchema(`{"keys":{"a":{"type":"string"}}}`);
+	expect(s.maxStateBytes).toBeUndefined();
+	expect(s.autoMaxStateBytesPercent).toBeUndefined();
 	expect(schemaCap(s)).toBe(DEFAULT_MAX_STATE_BYTES);
 });
 

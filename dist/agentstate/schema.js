@@ -20,9 +20,9 @@ function decodeNumberMember(value) {
  * handful of structured fields — the point of a default an operator never has to think
  * about is that it is generous enough not to need raising for an ordinary schema. */
 export const DEFAULT_MAX_STATE_BYTES = 4096;
-/** The percent auto mode uses when a schema turns it on (`autoMaxStateBytes: true`) but
- * does not say how much (`autoMaxStateBytesPercent` absent) — the middle of the
- * 50-80% range a caller sizing Σ against a context window should reasonably pick from. */
+/** The percent auto sizing uses when a schema declares no maxStateBytes and does not
+ * say how much either (`autoMaxStateBytesPercent` absent) — the middle of the 50-80%
+ * range a caller sizing Σ against a context window should reasonably pick from. */
 export const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 65;
 /** ~4 bytes per token: the same rough JSON-text-to-token ratio used to size other
  * prompt-bound budgets in this codebase. Only an approximation — actual bytes-per-token
@@ -68,7 +68,11 @@ export const Kind = {
     /** A JSON array, replaced wholesale on merge and bounded by maxItems. */
     List: "list",
 };
-/** The effective byte cap for the merged document. */
+/** The effective byte cap for the merged document, for a schema whose auto sizing (if
+ * any) has already been resolved by a caller that knows the context window — or that
+ * has none to resolve. An explicit maxStateBytes wins; otherwise this is the
+ * last-resort DEFAULT_MAX_STATE_BYTES fallback, not auto sizing itself (agentstate
+ * cannot compute that — see autoMaxStateBytesPercent). */
 export function schemaCap(schema) {
     return schema.maxStateBytes && schema.maxStateBytes > 0 ? schema.maxStateBytes : DEFAULT_MAX_STATE_BYTES;
 }
@@ -194,7 +198,7 @@ function decodeSchema(value) {
     if (!isPlainDocObject(value)) {
         throw new Error("the state schema must be a JSON object");
     }
-    const allowed = new Set(["keys", "maxStateBytes", "autoMaxStateBytes", "autoMaxStateBytesPercent"]);
+    const allowed = new Set(["keys", "maxStateBytes", "autoMaxStateBytesPercent"]);
     for (const member of Object.keys(value)) {
         if (!allowed.has(member)) {
             throw new Error(`the state schema has an unknown field ${quote(member)}`);
@@ -207,12 +211,6 @@ function decodeSchema(value) {
             throw new Error("maxStateBytes must be an integer");
         }
         schema.maxStateBytes = n;
-    }
-    if ("autoMaxStateBytes" in value) {
-        if (typeof value.autoMaxStateBytes !== "boolean") {
-            throw new Error("autoMaxStateBytes must be a boolean");
-        }
-        schema.autoMaxStateBytes = value.autoMaxStateBytes;
     }
     if ("autoMaxStateBytesPercent" in value) {
         const n = decodeNumberMember(value.autoMaxStateBytesPercent);

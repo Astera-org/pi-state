@@ -1,8 +1,10 @@
-// Resolves a schema's `autoMaxStateBytes` (see `../agentstate/schema.ts`) into a
-// concrete `maxStateBytes`, using whatever this entrypoint can learn about the active
-// model's context window. `agentstate` itself cannot do this — it is pure logic with no
-// I/O and no notion of "the current model" — so this is the one place in this repo that
-// is allowed to know about `pi`'s model/session surface.
+// Resolves a schema's auto sizing (see `../agentstate/schema.ts`'s `maxStateBytes` and
+// `autoMaxStateBytesPercent`) into a concrete `maxStateBytes`, using whatever this
+// entrypoint can learn about the active model's context window. Auto sizing is the
+// DEFAULT for a schema that declares no `maxStateBytes` — not an opt-in — so this runs
+// unconditionally whenever a schema has no explicit cap. `agentstate` itself cannot do
+// this — it is pure logic with no I/O and no notion of "the current model" — so this is
+// the one place in this repo that is allowed to know about `pi`'s model/session surface.
 //
 // Two sources, in priority order:
 //   1. `pi` itself, when it reports the active model's `contextWindow` — a `session_start`
@@ -52,7 +54,7 @@ export function contextWindowFromModelHolder(value) {
     return isPositiveFiniteNumber(contextWindow) ? contextWindow : undefined;
 }
 /**
- * Resolves `schema`'s auto mode against `contextWindowTokens` and substitutes the
+ * Resolves `schema`'s auto sizing against `contextWindowTokens` and substitutes the
  * result into `schema.maxStateBytes` in place — mutated rather than replaced, so a
  * `Schema` object already captured by a tool's `execute` closure (see
  * `entrypoint/index.ts`'s `stateGetTool`/`stateCommitTool`) sees the update on its next
@@ -61,10 +63,14 @@ export function contextWindowFromModelHolder(value) {
  * No-ops whenever: `declaredMaxStateBytes` (the schema FILE's own `maxStateBytes`,
  * captured once at load time — NOT `schema.maxStateBytes`, which this function itself
  * may have already overwritten on an earlier, less-informed call) is a positive number
- * — an explicit cap always wins over auto, full stop; `schema.autoMaxStateBytes` is not
- * set — auto was never requested; or `contextWindowTokens` is unresolved — nothing to
- * compute from yet, so `schemaCap` keeps answering `DEFAULT_MAX_STATE_BYTES` until a
- * later call supplies one.
+ * — an explicit cap always wins over auto sizing, full stop, no matter what
+ * `contextWindowTokens` says; or `contextWindowTokens` is unresolved — nothing to
+ * compute from yet, so `schemaCap` keeps answering `DEFAULT_MAX_STATE_BYTES` (the
+ * last-resort fallback, for when this genuinely never gets called with a resolvable
+ * context window) until a later call supplies one.
+ *
+ * There is no "auto is off" case: a schema with no explicit `maxStateBytes` is auto
+ * sizing's default target, not something that opted in.
  *
  * Safe to call repeatedly as better information arrives (env-var stopgap at install
  * time, then a live `contextWindow` at `session_start`, again at `model_select`): it
@@ -72,8 +78,6 @@ export function contextWindowFromModelHolder(value) {
  */
 export function applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokens, log) {
     if ((declaredMaxStateBytes ?? 0) > 0)
-        return;
-    if (!schema.autoMaxStateBytes)
         return;
     if (contextWindowTokens === undefined)
         return;

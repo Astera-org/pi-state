@@ -1,6 +1,7 @@
-// Unit tests for entrypoint/autocap.ts: the layer that resolves a schema's
-// autoMaxStateBytes into a concrete maxStateBytes from whatever this entrypoint can
-// learn about pi's active model (or the env-var stopgap when it can't).
+// Unit tests for entrypoint/autocap.ts: the layer that resolves auto sizing (the
+// default for a schema with no maxStateBytes) into a concrete maxStateBytes from
+// whatever this entrypoint can learn about pi's active model (or the env-var stopgap
+// when it can't).
 
 import { describe, expect, test } from "vitest";
 import type { Schema } from "../src/agentstate/index.js";
@@ -54,8 +55,11 @@ describe("contextWindowFromModelHolder", () => {
 });
 
 describe("applyAutoMaxStateBytes", () => {
+	// Auto sizing is the DEFAULT for a schema with no maxStateBytes — not an opt-in — so
+	// the bare `{ keys: {} }` schema below is already "auto", exactly like a real
+	// schema file that says nothing about its cap.
 	function autoSchema(overrides: Partial<Schema> = {}): Schema {
-		return { keys: {}, autoMaxStateBytes: true, ...overrides };
+		return { keys: {}, ...overrides };
 	}
 
 	test("resolves maxStateBytes from the context window at the default percent", () => {
@@ -79,12 +83,6 @@ describe("applyAutoMaxStateBytes", () => {
 		applyAutoMaxStateBytes(schema, 4096, 200000, (m) => logs.push(m));
 		expect(schema.maxStateBytes).toBe(4096);
 		expect(logs).toHaveLength(0);
-	});
-
-	test("no-ops when autoMaxStateBytes is not set", () => {
-		const schema: Schema = { keys: {} };
-		applyAutoMaxStateBytes(schema, undefined, 200000, () => {});
-		expect(schema.maxStateBytes).toBeUndefined();
 	});
 
 	test("no-ops when the context window is unresolved", () => {
