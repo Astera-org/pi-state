@@ -1,6 +1,5 @@
 // Ported from Astera-org/sproot's internal/agentstate/carriage.go (ENG-1172) — a
 // READING of a stored document against its schema, not a verdict on whether it's true.
-// See that file for the full rationale.
 
 import { type DocValue, isPlainDocObject } from "./json.js";
 import { declaredKeys, type Schema, unmarshal } from "./schema.js";

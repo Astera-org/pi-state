@@ -1,7 +1,7 @@
 // Ported from Astera-org/sproot's internal/agentstate/agentstate.go — the Schema model,
 // ParseSchema, ParsePatch, and the canonical Marshal/Unmarshal/Canonicalize/Size
-// primitives. See that file for the full rationale behind each rule; the short version
-// is in this repo's README.
+// primitives. See this repo's README for the short version of the rationale behind each
+// rule.
 //
 // Naming: Go's exported `PascalCase` functions (`ParseSchema`, `Merge`, ...) are ported
 // as `camelCase` (`parseSchema`, `merge`, ...) per TypeScript convention; types stay
@@ -25,7 +25,10 @@ function decodeIntegerMember(value: DocValue): number {
 	return value instanceof JsonNumber ? Number(value.raw) : Number.NaN;
 }
 
-/** The cap applied when a schema declares none. See agentstate.go for the 4 KiB rationale. */
+/** The cap applied when a schema declares none. 4 KiB keeps Σ a small, bounded slice of
+ * every request's prompt (it is resent in full on every turn) while still holding a
+ * real handful of structured fields — the point of a default an operator never has to
+ * think about is that it is generous enough not to need raising for an ordinary schema. */
 export const DEFAULT_MAX_STATE_BYTES = 4096;
 
 /** The largest cap a schema may declare. */

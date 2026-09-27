@@ -22,3 +22,5 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: dist/ matches src/
+        run: git diff --exit-code -- dist

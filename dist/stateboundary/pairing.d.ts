@@ -30,28 +30,45 @@
  * once written. The core decides WHAT is wrong; the caller says it in its own words. A
  * second shape would add an adapter here, not a second rule.
  */
-
 /** Why a run of messages cannot be cut into paired cycles. */
-export type PairingRefusal =
-	/** A result arrived with no call before it to answer. */
-	| { code: "stray-result"; at: number }
-	/** A call whose id is missing or unusable, so the cycle cannot be verified at all. */
-	| { code: "unverifiable-call"; at: number }
-	/** A result that names no call. */
-	| { code: "result-without-id"; at: number }
-	| { code: "answered-twice"; at: number; id: string }
-	/** `at` is the ASSISTANT message, because that is where the unanswered call was made. */
-	| { code: "unanswered-call"; at: number; id: string }
-	/** `at` is the ASSISTANT message the unrequested result followed. */
-	| { code: "unrequested-result"; at: number; id: string };
-
+export type PairingRefusal = 
+/** A result arrived with no call before it to answer. */
+{
+    code: "stray-result";
+    at: number;
+}
+/** A call whose id is missing or unusable, so the cycle cannot be verified at all. */
+ | {
+    code: "unverifiable-call";
+    at: number;
+}
+/** A result that names no call. */
+ | {
+    code: "result-without-id";
+    at: number;
+} | {
+    code: "answered-twice";
+    at: number;
+    id: string;
+}
+/** `at` is the ASSISTANT message, because that is where the unanswered call was made. */
+ | {
+    code: "unanswered-call";
+    at: number;
+    id: string;
+}
+/** `at` is the ASSISTANT message the unrequested result followed. */
+ | {
+    code: "unrequested-result";
+    at: number;
+    id: string;
+};
 /** One `assistant(calls)` message plus the contiguous run of results answering it. */
 export interface PairedCycle {
-	start: number;
-	/** Inclusive index of the last result in the cycle. */
-	end: number;
+    start: number;
+    /** Inclusive index of the last result in the cycle. */
+    end: number;
 }
-
 /**
  * What a caller's message shape has to answer. Three questions, and deliberately no more —
  * anything else a caller needs about a message it reads for itself, off its own array.
@@ -60,23 +77,22 @@ export interface PairedCycle {
  * caller handed in.
  */
 export interface PairingShape {
-	length: number;
-	/** Does the message at `i` answer a call? */
-	isResult(i: number): boolean;
-	/**
-	 * The call ids the message at `i` asks for: `null` when it asks for none (so it is not the
-	 * head of a cycle), `"unverifiable"` when it makes a call whose id cannot be read.
-	 *
-	 * `"unverifiable"` is a distinct answer rather than an empty list because an empty list is
-	 * indistinguishable from "asked for nothing", and that collapse is exactly the historical
-	 * defect this rule closes: with no ids to iterate, the arity check below reduces to
-	 * `0 !== 0` and a malformed cycle passes.
-	 */
-	callIds(i: number): readonly string[] | "unverifiable" | null;
-	/** The id the result at `i` answers, or null when it carries none usable. */
-	resultId(i: number): string | null;
+    length: number;
+    /** Does the message at `i` answer a call? */
+    isResult(i: number): boolean;
+    /**
+     * The call ids the message at `i` asks for: `null` when it asks for none (so it is not the
+     * head of a cycle), `"unverifiable"` when it makes a call whose id cannot be read.
+     *
+     * `"unverifiable"` is a distinct answer rather than an empty list because an empty list is
+     * indistinguishable from "asked for nothing", and that collapse is exactly the historical
+     * defect this rule closes: with no ids to iterate, the arity check below reduces to
+     * `0 !== 0` and a malformed cycle passes.
+     */
+    callIds(i: number): readonly string[] | "unverifiable" | null;
+    /** The id the result at `i` answers, or null when it carries none usable. */
+    resultId(i: number): string | null;
 }
-
 /**
  * Segment a run of messages into complete tool cycles, refusing anything not already fully
  * paired.
@@ -89,39 +105,9 @@ export interface PairingShape {
  * messages, and each caller has its own safe fallback: a request rewriter would forward the
  * original body, and the transcript boundary keeps Σ alone, which needs no pairing.
  */
-export function pairCycles(shape: PairingShape): { cycles: PairedCycle[] } | { refusal: PairingRefusal } {
-	const cycles: PairedCycle[] = [];
-	let i = 0;
-	while (i < shape.length) {
-		if (shape.isResult(i)) return { refusal: { code: "stray-result", at: i } };
-		const calls = shape.callIds(i);
-		if (calls === null) {
-			i++;
-			continue;
-		}
-		if (calls === "unverifiable") return { refusal: { code: "unverifiable-call", at: i } };
-
-		let j = i + 1;
-		const answered = new Set<string>();
-		while (j < shape.length && shape.isResult(j)) {
-			const id = shape.resultId(j);
-			if (id === null) return { refusal: { code: "result-without-id", at: j } };
-			if (answered.has(id)) return { refusal: { code: "answered-twice", at: j, id } };
-			answered.add(id);
-			j++;
-		}
-
-		for (const id of calls) {
-			if (!answered.has(id)) return { refusal: { code: "unanswered-call", at: i, id } };
-			answered.delete(id);
-		}
-		// Whatever is left answered a call this assistant never made. Checked AFTER the deletes,
-		// so the set holds exactly the unrequested ids.
-		const extra = answered.values().next();
-		if (!extra.done) return { refusal: { code: "unrequested-result", at: i, id: extra.value } };
-
-		cycles.push({ start: i, end: j - 1 });
-		i = j;
-	}
-	return { cycles };
-}
+export declare function pairCycles(shape: PairingShape): {
+    cycles: PairedCycle[];
+} | {
+    refusal: PairingRefusal;
+};
+//# sourceMappingURL=pairing.d.ts.map
