@@ -1,12 +1,12 @@
 /**
- * Sproot's ENG-1248: deliver Σ through pi's TRANSCRIPT BOUNDARY instead of a request rewrite.
+ * Deliver Σ through pi's TRANSCRIPT BOUNDARY instead of a request rewrite.
  *
  * The sibling of `statewindow.ts` and deliberately its narrowest possible
  * variation: everything about WHAT Σ is stays in that module and is imported from it —
  * the `tool_result` cache and its `isError` selection, the escape-aware carving
  * of `doc`/`version` out of the payload's own bytes, the preamble sentence, the
- * configuration's fail-closed parsing, and the `sproot-state-window` record sproot's Go
- * capture side reads. What changes here is DELIVERY, and delivery alone:
+ * configuration's fail-closed parsing, and the `sproot-state-window` transcript record
+ * (STATE_WINDOW_ENTRY_TYPE). What changes here is DELIVERY, and delivery alone:
  *
  *   statewindow.ts   (retired half) every outgoing POST /chat/completions was rewritten
  *                    into [P(+Σ), O, N trailing tool cycles]
@@ -447,20 +447,20 @@ export const STATE_BOUNDARY_SOURCE = "pi-state-loop";
  *
  * `installStateBoundary` used to `return` on an off configuration with no log, no record
  * and no counter, and `resolveStateWindow` refuses on THREE conditions that were
- * indistinguishable from outside it. So a run could register its MCP tools, take its turns
+ * indistinguishable from outside it. So a run could register its tools, take its turns
  * and have its commits accepted while the boundary was never installed at all — which is
  * exactly what an operator measured (0 boundaries, `retention.refusals` 0, nothing logged
  * anywhere) and could not diagnose. Every OTHER failure path in this module already logs a
  * reason and writes a record; this one now names the condition too.
  *
- * THE BRACKET IS A WIRE FORMAT, not decoration. Sproot's `benchmark/eng1304`'s
- * `parseStateLoopInstall` reads `[condition=… fault=…]` off the child's stderr and refuses a
- * run whose bounded arm reported it — the same loudness `checkBridges` gives a bridge that
- * is missing, for a bridge that loads and cannot configure itself. The lead words are for
- * the human and nothing parses them. The `fault` flag is what keeps the asymmetry
- * `stateWindowSetting` is built on visible on the wire: a negative control arm sets the kill
- * switch ON PURPOSE, and a harness that read that as a defect would refuse every run that
- * carried its own control.
+ * THE BRACKET IS A WIRE FORMAT, not decoration: `[condition=… fault=…]` is meant to be
+ * machine-parseable off stderr by an automated harness that drives a run and wants to
+ * refuse one whose bounded arm silently never installed, with the same loudness a
+ * missing dependency would get. The lead words are for the human and nothing parses
+ * them. The `fault` flag is what keeps the asymmetry `stateWindowSetting` is built on
+ * visible on the wire: a negative control arm sets the kill switch ON PURPOSE, and a
+ * harness that read that as a defect would refuse every run that carried its own
+ * control.
  */
 export function stateBoundaryNotInstalled(off: StateWindowOff): string {
 	const lead = off.fault ? "state loop NOT INSTALLED" : "state loop off by operator configuration";

@@ -24,11 +24,11 @@
  * adapter bug misreads one shape, a rule bug is wrong for every shape at once.
  *
  * THE REFUSAL IS A CODE, NOT A SENTENCE. Each caller renders it in its own vocabulary —
- * `toolCallId` is pi's field name, `tool_call_id` was the retired wire's — and the rendered
- * text is a captured format on sproot's side: it reaches pi's transcript, is normalized by
- * `internal/trace`, rendered on the dashboard's state-loop panel and asserted verbatim there.
- * The core decides WHAT is wrong; the caller says it in its own words. A second shape would
- * add an adapter here, not a second rule.
+ * `toolCallId` is pi's field name, `tool_call_id` was the retired wire's — because the
+ * rendered text is itself a captured format once it reaches pi's transcript: existing
+ * tooling asserts specific wording verbatim, so a caller's rendering is not free to drift
+ * once written. The core decides WHAT is wrong; the caller says it in its own words. A
+ * second shape would add an adapter here, not a second rule.
  */
 
 /** Why a run of messages cannot be cut into paired cycles. */

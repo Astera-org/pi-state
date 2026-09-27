@@ -1,13 +1,7 @@
 /**
- * ENG-1060 (Astera-org/sproot): WHAT Σ IS — the state loop's shared Σ machinery, and no
- * longer a delivery mechanism of its own.
- *
- * Sproot's ENG-1294 narrowed the agent state loop to a `pi-state` runtime and removed this
- * module's other half: the fetch interceptor that rewrote every outgoing
- * `POST /chat/completions` body into `[P(+Σ), O, N trailing tool cycles]`. Plain `pi`
- * has no `replaceTranscript`, so that rewrite was the only thing that could bound its
- * prompt — retiring the pairing retired the rewrite with it. `stateboundary.ts` bounds
- * the prompt instead, and everything it needs to answer "what is Σ" is here:
+ * WHAT Σ IS — the state loop's shared Σ machinery. This module is deliberately not a
+ * delivery mechanism itself: `stateboundary.ts` bounds the prompt by replacing pi's
+ * transcript, and everything IT needs to answer "what is Σ" lives here:
  *
  *   - the configuration, parsed FAIL CLOSED (resolveStateWindow) from a plain options
  *     object rather than the environment. A malformed value never selects a default and
@@ -16,42 +10,44 @@
  *     Turning an environment variable into that options object — whatever a given caller
  *     names its variables — is a separate, thin concern that lives outside this module.
  *   - the `tool_result` cache and its selection of the newest state_commit result PI
- *     REPORTED SUCCESSFUL (sproot's ENG-1127; observeStateCommitResult). Success is pi's
- *     own `isError`, never something re-derived from the result text — see that function
- *     for why the text could not answer it.
+ *     REPORTED SUCCESSFUL (observeStateCommitResult). Success is pi's own `isError`,
+ *     never something re-derived from the result text — see that function for why the
+ *     text could not answer it.
  *   - the byte-exact carving of `doc` and `version` out of the result's own payload
  *     (rawJsonMember and its scanner). Σ reaches the prompt as sliced bytes, so an
  *     arbitrary-precision version is quoted back exactly as committed rather than
  *     through a JavaScript number.
  *   - the preamble sentence Σ is delivered under (stateWindowPreamble).
- *   - the `sproot-state-window` transcript record sproot's Go capture side reads
- *     (internal/trace, StateWindowEntryType).
+ *   - the `sproot-state-window` transcript record (STATE_WINDOW_ENTRY_TYPE below).
  *
- * THE NAME STAYS `statewindow`, deliberately — and the reason is narrower than it might
- * look. What is a CAPTURED FORMAT is the `sproot-state-window` ENTRY TYPE
- * (STATE_WINDOW_ENTRY_TYPE below): it is already written into sproot transcripts on disk
- * and asserted by name in sproot's internal/trace, internal/report and test/e2e, so
- * renaming it would orphan rows nobody can re-emit — which is also why this module keeps
- * that literal string even outside sproot's own tree: sproot is expected to consume this
- * same module against its own MCP-backed tools, and the entry type is the wire contract
- * that trip depends on. The rest of this module's naming carries no such contract and is
- * free to be plain: nothing here reads an environment variable by name any more, so there
- * is nothing sproot-specific left to rename in the configuration surface.
+ * THE NAME STAYS `statewindow`, and `STATE_WINDOW_ENTRY_TYPE` STAYS `sproot-state-window`,
+ * even though this repo has no sproot adapter of its own: both are carried over unrenamed
+ * from where this mechanism was first built, in the private Astera-org/sproot repo, purely
+ * because the entry-type STRING is a captured format — transcripts already on disk (and
+ * any tooling that reads them by that name) carry it verbatim, and renaming the constant
+ * would only orphan those rows, not change anything this module does. Nothing else here
+ * carries such a contract: nothing in this file reads an environment variable by name any
+ * more, so there is no other sproot-specific spelling left to rename.
  *
- * WHERE THE RETIRED HALF'S FINDINGS LIVE. The interceptor had two KNOWN EXPOSURES, both
- * consequences of bounding a request pi could not see: pi's held transcript growing to
- * V8's old-space limit, and a provider reporting zero or absent `usage` dropping pi into
- * local estimation over that transcript. Neither is a property of this module any more —
- * a boundary is a session entry pi constructs context from, so the bound is pi's own — and
- * `stateboundary.ts`'s header states what does and does not carry over.
+ * THIS MODULE ALSO USED TO POWER A SECOND DELIVERY MECHANISM, now retired: a fetch
+ * interceptor that rewrote every outgoing `POST /chat/completions` body into
+ * `[P(+Σ), O, N trailing tool cycles]`, for a host with no `replaceTranscript`-style hook
+ * of its own. This repo never runs that interceptor — `stateboundary.ts`'s transcript
+ * boundary is the only delivery path here — but it is worth naming the two KNOWN
+ * EXPOSURES it had, both consequences of bounding a request pi could not see: pi's held
+ * transcript growing to V8's old-space limit, and a provider reporting zero or absent
+ * `usage` dropping pi into local estimation over that transcript. Neither is a property of
+ * this module any more — a boundary is a session entry pi constructs context from, so the
+ * bound is pi's own — and `stateboundary.ts`'s header states what does and does not carry
+ * over.
  */
 
 /**
  * What a caller resolves its own environment into before calling into this module. NO
  * `process.env` read happens anywhere in this file or in `stateboundary.ts`/`pairing.ts` —
- * a caller (sproot's own adapter, or a standalone entrypoint with its own variable names)
- * decides how its environment spells each of these and hands over the result. That keeps
- * the fail-closed PARSING that matters — the kill switch's asymmetric accept/refuse rule,
+ * a caller (this repo's own `src/entrypoint`, or any other host with its own variable
+ * names) decides how its environment spells each of these and hands over the result. That
+ * keeps the fail-closed PARSING that matters — the kill switch's asymmetric accept/refuse rule,
  * and the cycle count's strict integer grammar — in one place shared by every caller,
  * while the trivial "is the mode on for this session at all" gate is resolved by the
  * caller, which is the only side that knows what its own variable is even called.
@@ -92,27 +88,27 @@ export interface StateWindowOptions {
 export const DEFAULT_TOOL_CYCLES = 4;
 
 /**
- * The ceiling on N. Sproot pins this to `store.MaxKeepCycles` on its Go side — the
- * write-boundary check on a role's `keepCycles`. The two must agree there, or a role
- * sproot's dashboard accepts is one this module refuses.
- *
- * 20 is not arbitrary: a complete tool cycle runs ~500–2000 tokens, so 20
- * trailing cycles is already 10–40k tokens of context. Twice that would be
- * 32–128k — the growth this mode exists to remove.
+ * The ceiling on N. 20 is not arbitrary: a complete tool cycle runs ~500–2000 tokens, so
+ * 20 trailing cycles is already 10–40k tokens of context. Twice that would be 32–128k —
+ * the growth this mode exists to remove. (It also matches a write-boundary check on the
+ * sproot side, where this mechanism originated, so a caller adapting sproot's own
+ * configuration can carry the number over unchanged — but nothing in this module depends
+ * on that agreement holding.)
  */
 export const MAX_TOOL_CYCLES = 20;
 
 /**
- * The ONLY two names a `state_commit` tool result can arrive under: the bare
- * tool name, and the one name pi registers it under for sproot's own control
- * surface (`runtime.MCPToolName("sproot", …)`).
+ * The ONLY two names a `state_commit` tool result can arrive under: the bare local-tool
+ * name this repo's own entrypoint registers (`src/entrypoint`), and one MCP-style name —
+ * `mcp__sproot__state_commit` — kept recognized for a caller that fronts this same shared
+ * module with an MCP-backed `state_commit` tool of its own (this repo does not; its tools
+ * are always local, never MCP). Recognizing that second spelling here costs a standalone
+ * caller nothing, since a tool actually named that way never appears in this repo's own
+ * runs.
  *
- * A suffix match would be wrong, not merely loose: `sproot-engram` is a real
- * MCP server in sproot's fleet and `mcp__sproot-engram__state_commit` would
- * otherwise be eligible to become the agent's Σ. The bare name and the
- * `mcp__sproot__` spelling both stay recognized here — even for a caller with no
- * sproot MCP tools of its own — because sproot is expected to consume this same
- * module against its own MCP-backed tools later.
+ * A suffix match would be wrong, not merely loose: `mcp__sproot-engram__state_commit`
+ * names a DIFFERENT tool and must stay ineligible to become the agent's Σ, so both
+ * accepted names are matched exactly.
  */
 export const STATE_COMMIT_TOOL_NAMES: readonly string[] = ["state_commit", "mcp__sproot__state_commit"];
 
@@ -131,11 +127,10 @@ export const STATE_COMMIT_VERSION_KEY = "version";
 export const STATE_COMMIT_DOC_KEY = "doc";
 
 /**
- * The custom entry type this module appends (pi.appendEntry) for every rewrite.
- * Sproot's Go capture side (internal/trace, StateWindowEntryType) recognizes it by
- * name, which is why the string stays `sproot-state-window` rather than following this
- * package's own name: it is a CAPTURED FORMAT, already on disk, and renaming it would
- * orphan rows nobody can re-emit.
+ * The custom entry type this module appends (pi.appendEntry) for every rewrite. The
+ * string stays `sproot-state-window` rather than following this package's own name
+ * because it is a CAPTURED FORMAT: existing transcripts already have entries on disk
+ * under that name, and renaming it would orphan those rows rather than relabel them.
  */
 export const STATE_WINDOW_ENTRY_TYPE = "sproot-state-window";
 
@@ -307,10 +302,10 @@ export interface CachedStateCommit {
  * The newest successful `state_commit` result, or null — what the window reads
  * Σ out of.
  *
- * Sproot's ENG-1127. This replaces re-deriving success by parsing the result text, and
- * the reason the text could not answer it is worth keeping: a stale-version CAS
- * refusal is the designed, expected, retryable concurrency path of sproot's Go core —
- * what a healthy system does under contention — and the openai-completions
+ * This replaces re-deriving success by parsing the result text, and the reason the text
+ * could not answer it is worth keeping: a stale-version CAS refusal (see `src/backend`'s
+ * `StaleStateVersionError`) is the designed, expected, retryable concurrency path of a
+ * healthy backend under contention, not a fault — and the openai-completions
  * dialect builds its wire tool message as `{role, content, tool_call_id}` with
  * NO error flag, because the OpenAI Chat Completions format has none. A fetch
  * wrapper only ever sees that already serialized body, so a refusal reached it
@@ -724,20 +719,24 @@ const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
  * result pi already reported with `isError === false`. What is left is
  * extraction, and it fails closed: a payload whose `version` does not slice out
  * as a JSON number, or whose `doc` does not slice out as a JSON object, is a
- * contract drift with sproot's `internal/mcp` rather than a Σ to re-home, and
- * re-homing the wrong bytes would replace the agent's memory with them. The two
- * checks are on the SLICED BYTES, so they need no parse of the whole payload.
+ * contract drift with the `state_commit` result shape any caller must produce
+ * (see `src/entrypoint/index.ts`'s `stateCommitTool`) rather than a Σ to
+ * re-home, and re-homing the wrong bytes would replace the agent's memory with
+ * them. The two checks are on the SLICED BYTES, so they need no parse of the
+ * whole payload.
  *
  * What is returned for the prompt is the RAW BYTES of `doc` and `version`,
- * sliced out of the result text, never a reserialization. Sproot's go-core
- * preserves arbitrary-precision numbers (`json.Number`) and caps the document's
- * exact canonical bytes; a JavaScript round trip survives neither. `JSON.parse`
- * turns `9999999999999999` into `10000000000000000`, and a document capped at
- * exactly 4096 bytes came back 4097 — the agent's memory reaching the model with
- * DIFFERENT VALUES than were committed, and a cap measured on one representation
- * paid on another. `version` is the one place a number is also produced, and it
- * is for the transcript RECORD alone (StateWindowEntryData.stateVersion); the
- * `versionText` string is what the prompt gets.
+ * sliced out of the result text, never a reserialization. This repo's own
+ * `agentstate` core preserves arbitrary-precision numbers (`JsonNumber`, mirroring
+ * Go's `json.Number` in the mechanism's original implementation) and caps the
+ * document's exact canonical bytes; a JavaScript round trip survives neither.
+ * `JSON.parse` turns `9999999999999999` into `10000000000000000`, and a document
+ * capped at exactly 4096 bytes came back 4097 — the agent's memory reaching the
+ * model with DIFFERENT VALUES than were committed, and a cap measured on one
+ * representation paid on another. `version` is the one place a number is also
+ * produced, and it is for the transcript RECORD alone
+ * (StateWindowEntryData.stateVersion); the `versionText` string is what the
+ * prompt gets.
  */
 export function sigmaFromResult(cached: CachedStateCommit | null): Sigma | null {
 	if (cached === null) return null;
@@ -769,10 +768,10 @@ export interface StateWindowEntryData {
 	 * How Σ reached the prompt. **Only `rehomed` is written today** — a boundary is
 	 * written from the cache every time, so `stateboundary.ts` returns before there is
 	 * anything to record when Σ is null, and there is no body position for `in-window`
-	 * to name. The other three are kept because this is a CAPTURED FORMAT: sproot has
-	 * records carrying them on disk from a retired fetch rewrite, and its
-	 * `internal/trace`, the dashboard's state-loop panel and the Go capture side still
-	 * read them.
+	 * to name. The other three are kept because this is a CAPTURED FORMAT: existing
+	 * transcripts already carry records with these values, from the retired fetch
+	 * rewrite this union originally described, and tooling that reads those transcripts
+	 * by this field still expects all four values to be valid.
 	 *
 	 *   in-window kept where it stood inside a surviving cycle (rewrite only).
 	 *   absent    no `state_commit` result in that request at all — the ordinary
@@ -832,10 +831,9 @@ export interface Sigma {
 
 /**
  * Persist one rewrite's record — or the marker saying the window could not be
- * produced — into the transcript, where sproot's Go capture side (internal/trace,
- * StateWindowEntryType) finds it. A pi whose API predates appendEntry, or whose
- * appendEntry throws, loses only the record: the request and the turn are
- * untouched either way.
+ * produced — into the transcript, under STATE_WINDOW_ENTRY_TYPE. A pi whose API predates
+ * appendEntry, or whose appendEntry throws, loses only the record: the request and the
+ * turn are untouched either way.
  */
 export function recordStateWindowIntoTranscript(
 	pi: { appendEntry?: (customType: string, data?: unknown) => void },
