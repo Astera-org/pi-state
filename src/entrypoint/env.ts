@@ -19,6 +19,15 @@ export const ENV_STATE_LOOP = "PI_STATE_LOOP";
  * `DEFAULT_TOOL_CYCLES`; see `parseToolCycles` for the parsing contract. */
 export const ENV_STATE_WINDOW_CYCLES = "PI_STATE_WINDOW_CYCLES";
 
+/** A manual stopgap for a schema's `autoMaxStateBytes` (see `../agentstate/schema.ts`):
+ * the active model's context window, in tokens, for an operator to set by hand on a
+ * `pi` this extension cannot otherwise learn it from. See `autocap.ts` for how this is
+ * combined with what `pi` itself reports at `session_start`/`model_select` — a live
+ * report always supersedes this once one arrives, since this is a manually-maintained
+ * number and can go stale the moment an operator switches models. Unset or unparsable
+ * (not a positive number) means "no override from here". */
+export const ENV_STATE_CONTEXT_WINDOW_TOKENS = "PI_STATE_CONTEXT_WINDOW_TOKENS";
+
 export function stateWindowOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): StateWindowOptions {
 	return {
 		enabled: true,

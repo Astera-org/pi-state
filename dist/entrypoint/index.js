@@ -14,6 +14,7 @@
 import { declaredKeys, declaredTypes, JsonNumber, marshal, schemaCap, } from "../agentstate/index.js";
 import { commitFileState, readFileState } from "../backend/index.js";
 import { installStateBoundary, installStateCommitCache, recordStateWindowIntoTranscript, seedStateCommitCache, } from "../stateboundary/index.js";
+import { applyAutoMaxStateBytes, contextWindowFromModelHolder, contextWindowTokensFromEnv } from "./autocap.js";
 import { stateWindowOptionsFromEnv } from "./env.js";
 import { DEFAULT_SCHEMA_PATH, loadSchemaFile } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
@@ -125,17 +126,34 @@ export async function installPiState(pi, opts = {}) {
     const schemaPath = opts.schemaPath ?? DEFAULT_SCHEMA_PATH;
     const statePath = opts.statePath ?? DEFAULT_STATE_PATH;
     const schema = await loadSchemaFile(schemaPath);
+    // Captured once, before anything below ever assigns to schema.maxStateBytes: auto
+    // mode must defer to what the schema FILE itself declared, not to a value this
+    // entrypoint already substituted in on an earlier, less-informed resolution (see
+    // applyAutoMaxStateBytes).
+    const declaredMaxStateBytes = schema.maxStateBytes;
+    const env = opts.env ?? process.env;
+    // Best-effort immediate resolution: the only source available before any session has
+    // started is the env-var stopgap (autocap.ts) — there is no live model yet to ask.
+    applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokensFromEnv(env), log);
     pi.registerTool(stateGetTool(schema, statePath));
     pi.registerTool(stateCommitTool(schema, statePath));
     // BEFORE the boundary's own handler, so the cache has already observed a result by the
     // time the boundary asks what Σ is — both are `tool_result` handlers pi runs in
     // registration order (see stateboundary.ts's `installStateBoundary` doc comment).
     installStateCommitCache(pi);
-    const options = stateWindowOptionsFromEnv(opts.env ?? process.env);
+    const options = stateWindowOptionsFromEnv(env);
     const record = (data) => recordStateWindowIntoTranscript(pi, data, log);
     installStateBoundary(pi, options, record, { log });
     pi.on("session_start", (_event, ctx) => {
         seedStateCommitCache(ctx, log);
+        // A live contextWindow, once a session has a model, supersedes the install-time
+        // env-var guess above (see applyAutoMaxStateBytes and autocap.ts's header).
+        const contextWindowTokens = contextWindowFromModelHolder(ctx) ?? contextWindowTokensFromEnv(env);
+        applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokens, log);
+    });
+    pi.on("model_select", (event) => {
+        const contextWindowTokens = contextWindowFromModelHolder(event) ?? contextWindowTokensFromEnv(env);
+        applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokens, log);
     });
 }
 export default installPiState;

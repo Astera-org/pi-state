@@ -9,16 +9,51 @@
 // still find the Go source a given export was ported from.
 import { AgentStateSchemaError, MalformedPatchError } from "./errors.js";
 import { byteLength, isPlainDocObject, JsonNumber, jsonTypeName, marshalValue, parseJsonDocument, quote, } from "./json.js";
-function decodeIntegerMember(value) {
+/** Decodes a bare JSON number member. Callers that need a whole number (maxStateBytes)
+ * check `Number.isInteger` themselves; autoMaxStateBytesPercent does not need to. */
+function decodeNumberMember(value) {
     return value instanceof JsonNumber ? Number(value.raw) : Number.NaN;
 }
-/** The cap applied when a schema declares none. 4 KiB keeps Σ a small, bounded slice of
- * every request's prompt (it is resent in full on every turn) while still holding a
- * real handful of structured fields — the point of a default an operator never has to
- * think about is that it is generous enough not to need raising for an ordinary schema. */
+/** The cap applied when a schema declares none — and neither auto mode nor an explicit
+ * maxStateBytes resolves one first. 4 KiB keeps Σ a small, bounded slice of every
+ * request's prompt (it is resent in full on every turn) while still holding a real
+ * handful of structured fields — the point of a default an operator never has to think
+ * about is that it is generous enough not to need raising for an ordinary schema. */
 export const DEFAULT_MAX_STATE_BYTES = 4096;
-/** The largest cap a schema may declare. */
-export const MAX_STATE_BYTES_CEILING = 64 * 1024;
+/** The percent auto mode uses when a schema turns it on (`autoMaxStateBytes: true`) but
+ * does not say how much (`autoMaxStateBytesPercent` absent) — the middle of the
+ * 50-80% range a caller sizing Σ against a context window should reasonably pick from. */
+export const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 65;
+/** ~4 bytes per token: the same rough JSON-text-to-token ratio used to size other
+ * prompt-bound budgets in this codebase. Only an approximation — actual bytes-per-token
+ * varies with tokenizer and content — but good enough to turn a token-denominated
+ * context window into a byte-denominated Σ cap without another round trip to a
+ * tokenizer. */
+export const DEFAULT_BYTES_PER_TOKEN = 4;
+/**
+ * Resolves auto mode's percent-of-context-window sizing into a concrete byte count.
+ * Pure math: `agentstate` has no I/O and no notion of "the current model", so it cannot
+ * learn a context window itself — the caller (this repo's `src/entrypoint`, which talks
+ * to `pi` and can learn the active model's context window) supplies it and is expected
+ * to substitute the result into a Schema's `maxStateBytes` before merge or cap
+ * enforcement ever sees it (see schemaCap, merge.ts).
+ *
+ * `percent` is not defaulted here — pass DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT yourself
+ * when a schema's own `autoMaxStateBytesPercent` is absent, so this function stays a
+ * single unconditional formula: `floor(contextWindowTokens * bytesPerToken * percent / 100)`.
+ */
+export function resolveAutoMaxStateBytes(percent, contextWindowTokens, bytesPerToken = DEFAULT_BYTES_PER_TOKEN) {
+    if (!(percent > 0 && percent <= 100)) {
+        throw new Error(`resolveAutoMaxStateBytes: percent ${percent} is outside the 1-100 range`);
+    }
+    if (!(contextWindowTokens > 0)) {
+        throw new Error(`resolveAutoMaxStateBytes: contextWindowTokens ${contextWindowTokens} must be positive`);
+    }
+    if (!(bytesPerToken > 0)) {
+        throw new Error(`resolveAutoMaxStateBytes: bytesPerToken ${bytesPerToken} must be positive`);
+    }
+    return Math.floor(contextWindowTokens * bytesPerToken * (percent / 100));
+}
 /** Bounds one key's `desc`, in bytes. */
 export const MAX_DESC_BYTES = 160;
 /** The declared type of one top-level Sigma key. There is deliberately no "anything"
@@ -84,12 +119,19 @@ function schemaError(message) {
 /** Reports whether the schema itself is well-formed. This is where a growth-shaped
  * declaration is refused: an unbounded list cannot be written down. */
 export function validateSchema(schema) {
+    // Deliberately no ceiling on a declared maxStateBytes: an operator who knows their
+    // model's context window is the one who can judge how much of it Σ may spend, and a
+    // fixed ceiling picked once for one generation of models is exactly the kind of
+    // number that goes stale as context windows grow. Only a negative cap is refused.
     const maxStateBytes = schema.maxStateBytes ?? 0;
     if (maxStateBytes < 0) {
         throw schemaError(`maxStateBytes ${maxStateBytes} is negative`);
     }
-    if (maxStateBytes > MAX_STATE_BYTES_CEILING) {
-        throw schemaError(`maxStateBytes ${maxStateBytes} is above the ${MAX_STATE_BYTES_CEILING}-byte ceiling`);
+    if (schema.autoMaxStateBytesPercent !== undefined) {
+        const percent = schema.autoMaxStateBytesPercent;
+        if (!(percent >= 1 && percent <= 100)) {
+            throw schemaError(`autoMaxStateBytesPercent ${percent} is outside the 1-100 range`);
+        }
     }
     for (const name of declaredKeys(schema)) {
         if (name.trim() === "") {
@@ -134,7 +176,7 @@ function decodeField(name, value) {
     }
     const field = { type: value.type };
     if ("maxItems" in value) {
-        const n = decodeIntegerMember(value.maxItems);
+        const n = decodeNumberMember(value.maxItems);
         if (!Number.isInteger(n)) {
             throw new Error(`declared key ${quote(name)}'s maxItems must be an integer`);
         }
@@ -152,7 +194,7 @@ function decodeSchema(value) {
     if (!isPlainDocObject(value)) {
         throw new Error("the state schema must be a JSON object");
     }
-    const allowed = new Set(["keys", "maxStateBytes"]);
+    const allowed = new Set(["keys", "maxStateBytes", "autoMaxStateBytes", "autoMaxStateBytesPercent"]);
     for (const member of Object.keys(value)) {
         if (!allowed.has(member)) {
             throw new Error(`the state schema has an unknown field ${quote(member)}`);
@@ -160,11 +202,24 @@ function decodeSchema(value) {
     }
     const schema = { keys: {} };
     if ("maxStateBytes" in value) {
-        const n = decodeIntegerMember(value.maxStateBytes);
+        const n = decodeNumberMember(value.maxStateBytes);
         if (!Number.isInteger(n)) {
             throw new Error("maxStateBytes must be an integer");
         }
         schema.maxStateBytes = n;
+    }
+    if ("autoMaxStateBytes" in value) {
+        if (typeof value.autoMaxStateBytes !== "boolean") {
+            throw new Error("autoMaxStateBytes must be a boolean");
+        }
+        schema.autoMaxStateBytes = value.autoMaxStateBytes;
+    }
+    if ("autoMaxStateBytesPercent" in value) {
+        const n = decodeNumberMember(value.autoMaxStateBytesPercent);
+        if (!Number.isFinite(n)) {
+            throw new Error("autoMaxStateBytesPercent must be a number");
+        }
+        schema.autoMaxStateBytesPercent = n;
     }
     if ("keys" in value) {
         const keysValue = value.keys;
