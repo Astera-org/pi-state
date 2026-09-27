@@ -1,6 +1,5 @@
-// Shared fixtures for the ported agentstate.go / merge.go test suite. Mirrors the
-// `schema()`, `patch(t, raw)` and `render(t, doc)` helpers in Astera-org/sproot's
-// internal/agentstate/agentstate_test.go.
+// Shared fixtures for the agentstate / merge test suite: `schema()`, `patch(t, raw)` and
+// `render(t, doc)` helpers.
 
 import { type DocObject, marshal, parsePatch, type Schema } from "../src/agentstate/index.js";
 

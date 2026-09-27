@@ -1,14 +1,10 @@
-// Ported from Astera-org/sproot's internal/agentstate/eng1404_test.go — ENG-1404: a
-// declared key can say what it HOLDS via `desc`.
+// ENG-1404: a declared key can say what it HOLDS via `desc`.
 //
-// NOT ported: TestAPreENG1404ParserCannotReadTheProseENG1404,
-// TestThePinnedDecoderShapeIsFrozenENG1404, and TestDescIsTheOnlyMemberThisReleaseAddedENG1404.
-// Those pin sproot's two-release rollback story (a previous server binary's decoder must
-// still refuse a schema carrying `desc`, checked by literally running that old decoder).
-// This package has no such rollback contract — it is a fresh port, not a deployed
-// service with an "old" binary anywhere — so there is nothing here for that story to be
-// about. The schema/prose behaviour itself (desc storage, its byte ceiling, and the two
-// renderings) is ported below.
+// No two-release rollback contract is tested here (a previous server binary's decoder
+// must still refuse a schema carrying `desc`, checked by running that old decoder): this
+// package is not a deployed service with an "old" binary anywhere, so there is nothing
+// for that story to be about. What's tested below is the schema/prose behaviour itself —
+// desc storage, its byte ceiling, and the two renderings.
 
 import { expect, test } from "vitest";
 import { declaredGuide, declaredSummary, described, MAX_DESC_BYTES, parseSchema } from "../src/agentstate/index.js";

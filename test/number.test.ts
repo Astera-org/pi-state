@@ -1,4 +1,4 @@
-// Ported 1:1 from Astera-org/sproot's internal/agentstate/number_test.go.
+// Tests for the canonical number form and its byte cap (number.ts).
 
 import { describe, expect, test } from "vitest";
 import {
