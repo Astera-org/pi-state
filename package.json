@@ -10,7 +10,6 @@
 	"scripts": {
 		"clean": "rm -rf dist",
 		"build": "tsc -p tsconfig.build.json",
-		"prepare": "npm run build",
 		"check": "biome check --write --error-on-warnings . && tsc -p tsconfig.json",
 		"test": "vitest run"
 	},

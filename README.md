@@ -190,3 +190,10 @@ npm run check   # biome + tsc
 npm test        # vitest
 npm run build   # emit dist/
 ```
+
+`dist/` is committed, not gitignored: `main`/`types`/`exports`/`pi.extensions` all point
+into it, this package has no runtime dependencies to trigger npm's `prepare` lifecycle,
+and `pi install git:...` installs with dev dependencies omitted — so there is no install
+step anywhere that could otherwise produce a working build. Run `npm run build` and
+commit the result alongside any change under `src/`; CI fails the build if `dist/` and
+`src/` disagree.

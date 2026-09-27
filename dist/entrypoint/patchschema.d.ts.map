@@ -1,0 +1,1 @@
+{"version":3,"file":"patchschema.d.ts","sourceRoot":"","sources":["../../src/entrypoint/patchschema.ts"],"names":[],"mappings":"AAWA,OAAO,EAAsB,KAAK,MAAM,EAAE,MAAM,wBAAwB,CAAC;AA2BzE,uEAAuE;AACvE,wBAAgB,WAAW,CAAC,MAAM,EAAE,MAAM,GAAG,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC,CAUnE;AAED,4FAA4F;AAC5F,wBAAgB,sBAAsB,CAAC,MAAM,EAAE,MAAM,GAAG,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC,CAc9E"}
