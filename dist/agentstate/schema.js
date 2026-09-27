@@ -1,12 +1,10 @@
-// Ported from Astera-org/sproot's internal/agentstate/agentstate.go — the Schema model,
-// ParseSchema, ParsePatch, and the canonical Marshal/Unmarshal/Canonicalize/Size
-// primitives. See this repo's README for the short version of the rationale behind each
-// rule.
+// The Schema model, parseSchema, parsePatch, and the canonical
+// marshal/unmarshal/canonicalize/size primitives that define an agent's durable working
+// state (Sigma). See this repo's README for the short version of the rationale behind
+// each rule.
 //
-// Naming: Go's exported `PascalCase` functions (`ParseSchema`, `Merge`, ...) are ported
-// as `camelCase` (`parseSchema`, `merge`, ...) per TypeScript convention; types stay
-// `PascalCase` (`Schema`, `Field`, `Kind`). Same words, different case, so a reader can
-// still find the Go source a given export was ported from.
+// Naming: functions are `camelCase` (`parseSchema`, `merge`, ...) per TypeScript
+// convention; types stay `PascalCase` (`Schema`, `Field`, `Kind`).
 import { AgentStateSchemaError, MalformedPatchError } from "./errors.js";
 import { byteLength, isPlainDocObject, JsonNumber, jsonTypeName, marshalValue, parseJsonDocument, quote, } from "./json.js";
 function decodeIntegerMember(value) {

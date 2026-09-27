@@ -1,6 +1,5 @@
-// One class per refusal kind in Astera-org/sproot's internal/agentstate package
-// (agentstate.go's sentinel `Err*` values). Go callers tell refusals apart with
-// `errors.Is`; here that's `instanceof`.
+// One class per refusal kind an agent state patch or schema can produce, so callers
+// tell refusals apart with `instanceof` rather than parsing a message string.
 /** An invalid SCHEMA (an operator's authoring mistake), as opposed to an invalid patch. */
 export class AgentStateSchemaError extends Error {
     constructor(message) {

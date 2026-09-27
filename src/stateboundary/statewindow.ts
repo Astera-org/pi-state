@@ -21,13 +21,11 @@
  *   - the `sproot-state-window` transcript record (STATE_WINDOW_ENTRY_TYPE below).
  *
  * THE NAME STAYS `statewindow`, and `STATE_WINDOW_ENTRY_TYPE` STAYS `sproot-state-window`,
- * even though this repo has no sproot adapter of its own: both are carried over unrenamed
- * from where this mechanism was first built, in the private Astera-org/sproot repo, purely
- * because the entry-type STRING is a captured format — transcripts already on disk (and
+ * because the entry-type STRING is a CAPTURED FORMAT: transcripts already on disk (and
  * any tooling that reads them by that name) carry it verbatim, and renaming the constant
  * would only orphan those rows, not change anything this module does. Nothing else here
  * carries such a contract: nothing in this file reads an environment variable by name any
- * more, so there is no other sproot-specific spelling left to rename.
+ * more, so there is no other such spelling left to rename.
  *
  * THIS MODULE ALSO USED TO POWER A SECOND DELIVERY MECHANISM, now retired: a fetch
  * interceptor that rewrote every outgoing `POST /chat/completions` body into
@@ -90,10 +88,10 @@ export const DEFAULT_TOOL_CYCLES = 4;
 /**
  * The ceiling on N. 20 is not arbitrary: a complete tool cycle runs ~500–2000 tokens, so
  * 20 trailing cycles is already 10–40k tokens of context. Twice that would be 32–128k —
- * the growth this mode exists to remove. (It also matches a write-boundary check on the
- * sproot side, where this mechanism originated, so a caller adapting sproot's own
- * configuration can carry the number over unchanged — but nothing in this module depends
- * on that agreement holding.)
+ * the growth this mode exists to remove. (It also matches a write-boundary check some
+ * external callers already use, so a caller adapting an existing configuration can carry
+ * the number over unchanged — but nothing in this module depends on that agreement
+ * holding.)
  */
 export const MAX_TOOL_CYCLES = 20;
 
