@@ -1,6 +1,5 @@
-// The transcript-boundary delivery of Sigma (Sigma), ported from Astera-org/sproot's
-// agent/pi-extensions/sproot-mcp/{pairing,statewindow,stateboundary}.ts. Bounds an agent's
-// prompt by replacing pi's transcript, at the end of a turn that accepted a commit, with
+// The transcript-boundary delivery of Sigma (Sigma). Bounds an agent's prompt by
+// replacing pi's transcript, at the end of a turn that accepted a commit, with
 // [Sigma, the newest user turn, N trailing tool cycles] instead of full history.
 //
 // No environment reads: every caller supplies its own StateWindowOptions, built from

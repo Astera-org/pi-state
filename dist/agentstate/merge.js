@@ -1,7 +1,7 @@
-// Ported from Astera-org/sproot's internal/agentstate/merge.go. Follows JSON Merge Patch
-// (RFC 7396) semantics for the deep half — null deletes, objects merge deep — plus one
-// addition of its own: an array replaces wholesale rather than merging element-by-element,
-// because a list has no natural per-index merge rule and "replace" is at least unsurprising.
+// Follows JSON Merge Patch (RFC 7396) semantics for the deep half — null deletes, objects
+// merge deep — plus one addition of its own: an array replaces wholesale rather than
+// merging element-by-element, because a list has no natural per-index merge rule and
+// "replace" is at least unsurprising.
 import { NestedListError, NumberRangeError, TooLargeError, TooManyItemsError, TypeMismatchError, UnknownKeyError, } from "./errors.js";
 import { isPlainDocObject, JsonNumber, jsonTypeName, quote } from "./json.js";
 import { canonicalNumber } from "./number.js";

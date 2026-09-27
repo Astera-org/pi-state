@@ -1,7 +1,7 @@
 import { type DocObject, type Schema } from "../agentstate/index.js";
-/** The compare-and-set refusal, worded exactly like sproot's `store.ErrAgentStateStaleVersion`
- * (internal/store/memory_agentstate.go, postgres_agentstate.go) — so an agent's error-handling
- * does not depend on which backend sits underneath it. */
+/** The compare-and-set refusal: a commit decided against a version that has since
+ * changed. Worded so an agent's error-handling does not depend on which backend sits
+ * underneath it. */
 export declare class StaleStateVersionError extends Error {
     readonly expectedVersion: number;
     readonly storedVersion: number;

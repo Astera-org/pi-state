@@ -1,6 +1,5 @@
-// Ported 1:1 from Astera-org/sproot's internal/agentstate/agentstate_test.go and
-// merge_test cases embedded in it. See that file's comments for the rationale behind
-// each case; kept here only where it explains something not obvious from the assertion.
+// Tests for agentstate's schema parsing and merge behavior. Comments are kept here only
+// where they explain something not obvious from the assertion.
 
 import { describe, expect, test } from "vitest";
 import {

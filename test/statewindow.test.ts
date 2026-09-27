@@ -1,20 +1,12 @@
-// Ported from Astera-org/sproot's agent/pi-extensions/sproot-mcp/statewindow.test.mjs,
-// translated from node:test/node:assert to this repo's vitest convention.
+// Tests for the state window's Σ machinery: the configuration's fail-closed parsing, the
+// kill switch's asymmetry, the cycle depth's strict grammar, Σ selection, the cache's
+// session identity handling, and the byte-exact carving of `doc`/`version` out of a
+// state_commit payload.
 //
-// ADAPTED, not copied verbatim: the "configuration fails closed" cases now build a
-// `StateWindowOptions` object directly instead of an env-var record, because
-// SPROOT_STATE_LOOP/SPROOT_PI_STATE_WINDOW/SPROOT_PI_STATE_WINDOW_CYCLES no longer exist —
-// turning an environment into that object is now a separate, thin concern outside this
-// module. One case ("is off by default, and only the exact string true turns it on") is
-// reworded rather than dropped, since `enabled` is now a real boolean and the exact-string
-// parsing it tested moved out of the core. One case ("there is no schema carrier…") is
-// dropped because a typed options object cannot carry a field it does not declare, which
-// is the same guarantee by construction rather than by test.
-//
-// Net: 31 of the original 32 cases ported (1 dropped, 1 reworded) — verified against a
-// leaf-test-name diff of this file against `node --test` run over the original .mjs. Every
-// other case — the kill switch's asymmetry, the cycle depth's strict grammar, Σ selection,
-// the cache's session identity handling, the byte-exact carving — ports 1:1.
+// The "configuration fails closed" cases build a `StateWindowOptions` object directly
+// rather than an env-var record, since turning an environment into that object is a
+// separate, thin concern outside this module — `enabled` here is a real boolean, not a
+// raw string parsed by the core.
 
 import { describe, expect, test } from "vitest";
 import { STATE_BOUNDARY_SOURCE, sigmaMessage, writeBoundary } from "../src/stateboundary/stateboundary.js";
@@ -48,9 +40,9 @@ import {
 const SIGMA = "mcp__sproot__state_commit";
 
 /**
- * A successful state_commit result, exactly as sproot's `internal/mcp` stateCommit
- * returns it: numeric `version`, the committed document under `doc`, transport beside
- * them — rendered COMPACT, with Go's map-key ordering.
+ * A successful state_commit result, exactly as an MCP-backed `state_commit` tool returns
+ * it: numeric `version`, the committed document under `doc`, transport beside them —
+ * rendered COMPACT, with Go's map-key ordering.
  */
 const committed = (version: number, doc?: unknown) =>
 	JSON.stringify({
@@ -61,9 +53,9 @@ const committed = (version: number, doc?: unknown) =>
 	});
 
 /**
- * A stale-version CAS refusal, as sproot's `internal/mcp` returns it: the bridge throws on
- * the server's `isError`, so pi finalizes the call with `isError: true` and the text is
- * whatever the refusal said.
+ * A stale-version CAS refusal, as an MCP-backed `state_commit` tool returns it: the
+ * bridge throws on the server's `isError`, so pi finalizes the call with `isError: true`
+ * and the text is whatever the refusal said.
  */
 const staleRefusal = "conflict: state version 7 is stale; re-read with state_get and commit again";
 
@@ -193,15 +185,14 @@ describe("configuration fails closed", () => {
 		expect(setting.reason, "a clipped value does not say it was clipped").toContain("…");
 	});
 
-	test("the ceiling matches the Go side's role write-boundary check", () => {
-		// store.MaxKeepCycles on sproot. A role sproot's dashboard accepts must not be one
-		// this module refuses.
+	test("the ceiling matches an external write-boundary check", () => {
+		// A role an external dashboard accepts must not be one this module refuses.
 		expect(MAX_TOOL_CYCLES).toBe(20);
 	});
 });
 
 describe("Σ selection", () => {
-	test("accepts only the bare tool name and sproot's own MCP spelling", () => {
+	test("accepts only the bare tool name and the MCP-style spelling", () => {
 		expect([...STATE_COMMIT_TOOL_NAMES]).toEqual(["state_commit", "mcp__sproot__state_commit"]);
 		expect(isStateCommitToolName("state_commit")).toBe(true);
 		expect(isStateCommitToolName("mcp__sproot__state_commit")).toBe(true);
@@ -250,9 +241,9 @@ describe("Σ selection", () => {
 	});
 
 	test("a REFUSAL is the ordinary retry path, and never shadows the success behind it", () => {
-		// The stale-version CAS refusal is the designed, expected retry path of sproot's Go
-		// core. It reaches pi as a thrown bridge error, so the event carries isError: true —
-		// and the cache leaves the previous Σ standing.
+		// The stale-version CAS refusal is the designed, expected retry path of an
+		// MCP-backed backend. It reaches pi as a thrown bridge error, so the event carries
+		// isError: true — and the cache leaves the previous Σ standing.
 		const cache = newStateCommitCache();
 		cache.observe(toolResultEvent("c1", committed(4)));
 		cache.observe(toolResultEvent("c2", staleRefusal, { isError: true }));
@@ -277,8 +268,8 @@ describe("Σ selection", () => {
 	test("a result text the window cannot carry is not Σ, however pi flagged it", () => {
 		// Success is settled; what is left is EXTRACTION, and it fails closed. A payload
 		// whose version does not slice out as a JSON number, or whose doc does not slice out
-		// as an object, is a contract drift with sproot's `internal/mcp` — re-homing those
-		// bytes would put them in the prompt as the agent's memory.
+		// as an object, is a contract drift with the MCP-backed backend's own wire format —
+		// re-homing those bytes would put them in the prompt as the agent's memory.
 		expect(sigmaOf("c1", committed(7))).toEqual({
 			toolCallId: "c1",
 			// The cached bytes ride along: the id alone cannot identify Σ's own message.
@@ -317,9 +308,9 @@ describe("Σ selection", () => {
 	});
 
 	test("preserves arbitrary-precision numbers a JS round trip would CORRUPT", () => {
-		// Sproot's go-core keeps json.Number deliberately. JSON.parse turns
-		// 9999999999999999 into 10000000000000000, so a reserialized Σ reaches the model
-		// with DIFFERENT VALUES than were committed.
+		// An MCP-backed backend keeps arbitrary-precision numbers deliberately. JSON.parse
+		// turns 9999999999999999 into 10000000000000000, so a reserialized Σ reaches the
+		// model with DIFFERENT VALUES than were committed.
 		const raw = '{"doc":{"big":9999999999999999,"tiny":1e-400,"neg":-0},"version":9007199254740993}';
 		expect(JSON.stringify(JSON.parse(raw).doc.big), "the corruption is real, not hypothetical").toBe(
 			"10000000000000000",
@@ -389,8 +380,8 @@ describe("Σ selection", () => {
 	});
 
 	test("an engram tool result of the same shape is not eligible to become Σ", () => {
-		// Exact-name, not suffix: `mcp__sproot-engram__state_commit` is a real tool in
-		// sproot's fleet. It is refused at the CACHE now, so it can never reach the window.
+		// Exact-name, not suffix: `mcp__sproot-engram__state_commit` is a real, differently
+		// named tool. It is refused at the CACHE now, so it can never reach the window.
 		const engram = "mcp__sproot-engram__state_commit";
 		const cache = newStateCommitCache();
 		expect(isStateCommitToolName(engram), "the name gate is exact, not a suffix match").toBe(false);
@@ -427,10 +418,10 @@ describe("Σ selection", () => {
 	});
 
 	test("the seed reads pi's persisted flag, and a readable branch replaces the cache", () => {
-		// The persisted shape is pi's own (sproot's internal/trace/normalize_pi.go reads
-		// these very records with a typed IsError field), so the seed hands each entry's
-		// message to the SAME gate a live event goes through — a refusal on disk is refused
-		// for the same reason it is refused live.
+		// The persisted shape is pi's own (an external trace normalizer reads these very
+		// records with a typed IsError field), so the seed hands each entry's message to
+		// the SAME gate a live event goes through — a refusal on disk is refused for the
+		// same reason it is refused live.
 		const only = (message: Record<string, unknown>) => {
 			const c = newStateCommitCache();
 			seedStateCommitCacheFromEntries(c, [entry(message)]);
@@ -734,8 +725,8 @@ describe("the transcript record", () => {
 	});
 
 	test("re-homes Σ's document as the payload's OWN BYTES, verbatim", () => {
-		// Not a reserialization. Sproot's go-core caps the document's exact canonical bytes
-		// and preserves arbitrary-precision numbers; a JSON.parse round trip survives
+		// Not a reserialization. An MCP-backed backend caps the document's exact canonical
+		// bytes and preserves arbitrary-precision numbers; a JSON.parse round trip survives
 		// neither, so what reaches the prompt is sliced, not rebuilt.
 		const sigma = sigmaOf("c1", committed(4))!;
 		const rehomed = sigmaMessage(sigma, 1).content as string;
@@ -746,8 +737,8 @@ describe("the transcript record", () => {
 	});
 
 	test("extraction is indifferent to how the payload was rendered", () => {
-		// Sproot's go-core switched from indented to compact mid-review and nothing here
-		// noticed; keying on isError rather than on the text keeps that true, and the SLICED
+		// A backend can switch from indented to compact rendering and nothing here would
+		// notice; keying on isError rather than on the text keeps that true, and the SLICED
 		// doc is whatever the rendering actually contained — the bytes are carried, not
 		// normalized.
 		const doc = { objective: "ship the core", step: 1 };
@@ -756,7 +747,7 @@ describe("the transcript record", () => {
 		expect(sigmaOf("c1", JSON.stringify(payload, null, 2))?.doc).toBe(
 			JSON.stringify(doc, null, 2).replace(/\n/g, "\n  "),
 		);
-		// The verbatim shape sproot's internal/mcp emits.
+		// The verbatim shape an MCP-backed backend emits.
 		expect(
 			sigmaOf(
 				"c1",

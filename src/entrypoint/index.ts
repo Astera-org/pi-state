@@ -1,13 +1,11 @@
-// The standalone pi extension entrypoint (ENG-1487's "no sproot, no Postgres, no MCP
-// round trip" bar): registers `state_get` and `state_commit` as LOCAL pi tools backed by
-// the file backend (`../backend`), and installs the transcript boundary
-// (`../stateboundary`) exactly like sproot's `stateindex.ts` did for the `pi-state`
-// runtime — minus everything that entrypoint did for sproot itself: no MCP `connect()`,
-// no receipt file, no Astera provider registration, no logprobs capture. Those are
-// sproot-bridge concerns; this extension's whole job is Σ, alone.
+// The standalone pi extension entrypoint (ENG-1487's "no external server, no Postgres,
+// no MCP round trip" bar): registers `state_get` and `state_commit` as LOCAL pi tools
+// backed by the file backend (`../backend`), and installs the transcript boundary
+// (`../stateboundary`). No MCP `connect()`, no receipt file, no external provider
+// registration, no logprobs capture — this extension's whole job is Σ, alone.
 //
 // The two tools are registered under their BARE names (`state_get`, `state_commit`), not
-// `mcp__sproot__`-prefixed: there is no MCP server here to prefix a name after, and
+// MCP-prefixed: there is no MCP server here to prefix a name after, and
 // `STATE_COMMIT_TOOL_NAMES` (statewindow.ts) already recognizes the bare name as one of
 // the two spellings a `state_commit` result may arrive under, so the Σ cache and the
 // boundary need no change to observe a local tool's results.
@@ -40,8 +38,8 @@ import { stateCommitInputSchema } from "./patchschema.js";
 export const DEFAULT_STATE_PATH = ".pi-state/state.json";
 
 // --- the slice of pi's extension API this entrypoint depends on -------------------
-// Declared structurally, like sproot's own `agent/pi-extensions/sproot-mcp/index.ts`
-// PiExtensionAPI, so this file typechecks and unit-tests with no `pi` package installed.
+// Declared structurally, so this file typechecks and unit-tests with no `pi` package
+// installed.
 
 export interface PiTextContent {
 	type: "text";
@@ -86,12 +84,12 @@ export interface PiStateOptions {
 // pi coerces a tool call's arguments against the JSON Schema `parameters` advertises
 // (typebox/`coerceWithJsonSchema`) BEFORE `execute` is reached, so what arrives here is
 // already a plain parsed JS value — a JS `number`, not the exact source digits
-// `agentstate`'s own parser keeps. THIS IS A REAL, DOCUMENTED GAP against sproot's MCP
-// path: `internal/mcp`'s state_commit takes `json.RawMessage` straight off the wire, so
-// an arbitrary-precision number survives it exactly; a local pi tool's arguments have
-// already been through one lossy JS round trip by the time any extension sees them, and
-// no pi extension API hands back the raw bytes to undo that. `String(v)` is the best
-// available rendering of what pi already parsed — see the README.
+// `agentstate`'s own parser keeps. THIS IS A REAL, DOCUMENTED GAP: an MCP `state_commit`
+// backed by `json.RawMessage` straight off the wire lets an arbitrary-precision number
+// survive it exactly; a local pi tool's arguments have already been through one lossy JS
+// round trip by the time any extension sees them, and no pi extension API hands back the
+// raw bytes to undo that. `String(v)` is the best available rendering of what pi already
+// parsed — see the README.
 
 function toDocValue(v: unknown): DocValue {
 	if (v === null) return null;
