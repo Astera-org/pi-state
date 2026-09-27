@@ -5,19 +5,62 @@ agent's prompt bounded by replacing its transcript each turn with a small durabl
 document (Sigma, `Σ`) instead of full history, once Sigma is committed via a
 `state_commit`-style tool call.
 
-This is a standalone extraction of the mechanism first built in
-[Astera-org/sproot](https://github.com/Astera-org/sproot) (`internal/agentstate` plus
-the `agent/pi-extensions/sproot-mcp` transcript boundary). See sproot's
-`docs/pi-state.md` for the full architecture this package is being extracted from.
+This package is a self-contained `pi` extension: install it, declare a schema, and it
+bounds the prompt on its own — no other service, database, or account is required. The
+mechanism was first built inside [Astera-org/sproot](https://github.com/Astera-org/sproot),
+Astera's internal agent platform, and is mentioned here and there below purely as
+historical provenance; nothing in this repo depends on sproot or assumes you have access
+to it.
+
+## Install
+
+```bash
+pi install git:github.com/Astera-org/pi-state
+```
+
+(or `pi install ./pi-state` from a local checkout, or `pi -e git:github.com/Astera-org/pi-state`
+to try it for one invocation without persisting the install — see `pi`'s own package
+documentation for the full set of install sources and flags).
+
+## Configure
+
+`pi-state` registers two tools, `state_get` and `state_commit`, once it can find a
+schema declaring the shape of Σ. There is no default: create
+`.pi-state/schema.json` relative to `pi`'s working directory, naming every key your
+agent's state may hold —
+
+```json
+{
+  "keys": {
+    "objective": { "type": "string", "desc": "what the agent is trying to accomplish" },
+    "step": { "type": "number", "desc": "how many turns since the objective last changed" }
+  },
+  "maxStateBytes": 4096
+}
+```
+
+— in the grammar `agentstate.parseSchema` accepts (documented in full under
+`src/agentstate` below: five kinds, a closed key set, an optional per-key `desc`, and a
+byte cap on the merged document). A schema with no keys is valid but refuses every
+non-empty patch, so a missing or empty file is not a usable default — installation fails
+loudly, with an actionable message, rather than silently registering a `state_commit`
+that can never succeed.
+
+With a schema in place, just run `pi` as you normally would. The agent calls
+`state_get`/`state_commit` to read and update Σ, and after any turn that commits at
+least one patch, `pi-state` replaces `pi`'s transcript with `[Σ, the newest user turn,
+the last few trailing tool cycles]` instead of full history — see `src/entrypoint` and
+`src/stateboundary` below for exactly what that replacement contains and why. No
+environment variables are required for this; see **Environment variables** under
+`src/entrypoint` to tune or disable it.
 
 ## `src/agentstate`
 
 The pure merge + validation core: given a stored Sigma document and a patch, it answers
 with the document that should replace it, or a refusal naming exactly what was wrong.
-Ported from sproot's `internal/agentstate` Go package (`agentstate.go`, `merge.go`,
-`number.go`, `carriage.go`) — see that package's comments for the full rationale behind
-each rule; the ported TypeScript carries a pointer back to it wherever a rule isn't
-obvious from the code alone.
+Originally ported from sproot's `internal/agentstate` Go package (`agentstate.go`,
+`merge.go`, `number.go`, `carriage.go`); the rationale behind each rule now lives in this
+package's own comments rather than requiring a look back at the Go source.
 
 **This module is pure logic: no file, network, or process I/O.** It exchanges plain
 strings and JS values with its caller and never reads or writes storage itself; a file
@@ -118,9 +161,8 @@ switch, so the two collapse into one flag:
 | `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ after a boundary | `4` |
 
 Defaulting `PI_STATE_LOOP` to **on** (rather than requiring explicit opt-in) is a
-deliberate choice: the ticket's acceptance bar is "pi plus the extension bounds the
-prompt" with no configuration required, so installing this extension with zero env vars
-already does that.
+deliberate choice: installing this extension and declaring a schema should be enough on
+its own to bound the prompt, with zero environment variables required.
 
 **Loud refusal.** At install time, if this `pi` exposes no `replaceTranscript`,
 `installPiState` **throws** rather than silently declining — this is a distinct,

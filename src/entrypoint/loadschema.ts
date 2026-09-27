@@ -1,6 +1,7 @@
-// Loads the operator-authored state schema — the standalone replacement for sproot's
-// `Role.StateSchema` column — from a file in pi's working directory, in the exact
-// grammar `agentstate.parseSchema` accepts.
+// Loads the operator-authored state schema from a file in pi's working directory, in the
+// exact grammar `agentstate.parseSchema` accepts. There is no server or database backing
+// this extension, so the schema — what Sigma's keys are, their types, and the byte cap —
+// lives beside the state file it governs, in the one directory this extension owns.
 
 import { readFile } from "node:fs/promises";
 import { parseSchema, type Schema } from "../agentstate/index.js";

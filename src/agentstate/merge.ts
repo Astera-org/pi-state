@@ -1,5 +1,7 @@
-// Ported from Astera-org/sproot's internal/agentstate/merge.go. See that file for the
-// full rationale behind each rule (null deletes, objects merge deep, arrays replace).
+// Ported from Astera-org/sproot's internal/agentstate/merge.go. Follows JSON Merge Patch
+// (RFC 7396) semantics for the deep half — null deletes, objects merge deep — plus one
+// addition of its own: an array replaces wholesale rather than merging element-by-element,
+// because a list has no natural per-index merge rule and "replace" is at least unsurprising.
 
 import {
 	NestedListError,
@@ -144,9 +146,8 @@ function mergeValue(key: string, current: DocValue, value: DocValue, field: Fiel
 }
 
 /** Applies `patch` to `doc` under `schema` and returns the document that should replace
- * it. Neither `doc` nor `patch` is mutated. See merge.go for the full semantics: null
- * deletes, objects merge deep, arrays replace wholesale, and the byte cap is applied
- * last, to the merged result. */
+ * it. Neither `doc` nor `patch` is mutated: null deletes, objects merge deep, arrays
+ * replace wholesale, and the byte cap is checked last, against the merged result. */
 export function merge(doc: DocObject | null | undefined, patch: DocObject, schema: Schema): DocObject {
 	validateSchema(schema);
 	const out = copyObject(doc);

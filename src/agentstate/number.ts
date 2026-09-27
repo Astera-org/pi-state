@@ -1,8 +1,7 @@
-// Ported from Astera-org/sproot's internal/agentstate/number.go. See that file for the
-// full rationale; the short version: the byte cap is measured on the EXPONENT-FREE
-// decimal form a number is stored as, because `1e10000` is 16 bytes of JSON and ten
-// thousand and one digits once expanded, and sizing the short form would make the cap
-// a measurement of a representation nothing stores.
+// Ported from Astera-org/sproot's internal/agentstate/number.go. The byte cap is measured
+// on the EXPONENT-FREE decimal form a number is stored as, because `1e10000` is 16 bytes
+// of JSON and ten thousand and one digits once expanded, and sizing the short form would
+// make the cap a measurement of a representation nothing stores.
 
 import { NumberRangeError } from "./errors.js";
 import { JsonNumber, truncate } from "./json.js";
