@@ -1,14 +1,13 @@
 /**
- * ENG-1278 (Astera-org/sproot): ONE tool-cycle pairing rule, stated apart from any message
- * shape.
+ * ENG-1278: ONE tool-cycle pairing rule, stated apart from any message shape.
  *
  * A bounded prompt is cut on cycle boundaries, and a cycle may only be cut out if it is
  * already fully paired: every call this assistant made is answered, none twice, none by a
  * result it did not request, and no result arrives without an id. An unmatched
  * `tool_call_id` in what goes out is a provider 400, not a smaller prompt.
  *
- * THERE IS ONE CALLER TODAY — `stateboundary.ts`, over pi's native message shape. Sproot's
- * ENG-1278 collapsed this rule out of two copies (the second was a `statewindow.ts` fetch
+ * THERE IS ONE CALLER TODAY — `stateboundary.ts`, over pi's native message shape. ENG-1278
+ * collapsed this rule out of two copies (the second was a `statewindow.ts` fetch
  * wrapper's, over the openai-completions wire shape a request rewrite saw), and ENG-1294
  * then retired that whole delivery mechanism along with its adapter. So the "two shapes"
  * this file was extracted for are now one.

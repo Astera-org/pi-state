@@ -1,6 +1,5 @@
-// Ported 1:1 from Astera-org/sproot's internal/agentstate/eng1172_test.go — ENG-1172:
-// the content reading, against its own two failure modes (calling an absence a finding,
-// or a finding an absence).
+// ENG-1172: the content reading, against its own two failure modes (calling an absence
+// a finding, or a finding an absence).
 
 import { describe, expect, test } from "vitest";
 import { carriesNothing, declaredKeys, readCarriage, type Schema } from "../src/agentstate/index.js";

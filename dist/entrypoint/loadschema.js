@@ -14,9 +14,9 @@ export const DEFAULT_SCHEMA_PATH = ".pi-state/schema.json";
  * schema with no keys refuses every non-empty patch — so this fails loudly with an
  * actionable message rather than installing a state loop that can never commit anything.
  * A schema file that exists but does not parse (parseSchema's own AgentStateSchemaError)
- * propagates unchanged: it is the same "unusable schema" refusal sproot's stateLoopPolicy
- * gives, and defence in depth is someone else's job here since there is no server-side
- * write boundary to have already validated it. */
+ * propagates unchanged as an "unusable schema" refusal, and defence in depth is someone
+ * else's job here since there is no server-side write boundary to have already
+ * validated it. */
 export async function loadSchemaFile(path) {
     let raw;
     try {

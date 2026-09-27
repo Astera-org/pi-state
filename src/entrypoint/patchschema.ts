@@ -1,13 +1,10 @@
 // Adapts an agentstate `Schema` into the JSON Schema `state_commit` advertises for its
-// `patch` argument — ported from sproot's `internal/mcp/agentstate.go`
-// (`stateCommitPatchSchema`, `stateCommitInputSchema`): one property per declared key,
-// each type unioned with `null` (a null value is how `merge` DELETES a key, so the union
-// is not decoration — see merge.ts), a list also carrying `maxItems`, and
-// `additionalProperties: false` for the closed key set.
+// `patch` argument: one property per declared key, each type unioned with `null` (a null
+// value is how `merge` DELETES a key, so the union is not decoration — see merge.ts), a
+// list also carrying `maxItems`, and `additionalProperties: false` for the closed key set.
 //
-// Dropped from the Go original: `action_summary`, sproot's operator-facing action-log
-// line. There is no action log in a standalone extension, so this surface asks only for
-// what the file backend's compare-and-set needs — `patch` and `version`.
+// There is no operator-facing action-log line in a standalone extension, so this surface
+// asks only for what the file backend's compare-and-set needs — `patch` and `version`.
 
 import { declaredKeys, Kind, type Schema } from "../agentstate/index.js";
 

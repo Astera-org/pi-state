@@ -1,6 +1,5 @@
-// Σ storage as a JSON file in pi's working directory — the standalone replacement for
-// sproot's Postgres `agent_state` table (internal/store/postgres_agentstate.go,
-// memory_agentstate.go). Same shape: read, merge (agentstate's own `merge`), write, a
+// Σ storage as a JSON file in pi's working directory — a standalone compare-and-set
+// backend with no external database. Read, merge (agentstate's own `merge`), write, a
 // version counter, and a compare-and-set that refuses a stale commit rather than
 // overwriting one.
 //
@@ -24,9 +23,9 @@ import { open, readFile, rename, unlink } from "node:fs/promises";
 import { type DocObject, marshal, merge, type Schema, unmarshal } from "../agentstate/index.js";
 import { rawJsonMember } from "../stateboundary/statewindow.js";
 
-/** The compare-and-set refusal, worded exactly like sproot's `store.ErrAgentStateStaleVersion`
- * (internal/store/memory_agentstate.go, postgres_agentstate.go) — so an agent's error-handling
- * does not depend on which backend sits underneath it. */
+/** The compare-and-set refusal: a commit decided against a version that has since
+ * changed. Worded so an agent's error-handling does not depend on which backend sits
+ * underneath it. */
 export class StaleStateVersionError extends Error {
 	readonly expectedVersion: number;
 	readonly storedVersion: number;

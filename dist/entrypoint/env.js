@@ -1,8 +1,7 @@
 // Maps THIS repo's own environment variable names onto `StateWindowOptions`
 // (src/stateboundary/statewindow.ts) — the caller-supplied object that module's fail-closed
-// parsing runs on. Deliberately not `SPROOT_*`: this is a standalone extension with no
-// sproot adapter writing a separate "mode" variable and a separate operator kill switch, so
-// the two collapse into one flag here.
+// parsing runs on. This is a standalone extension with no separate "mode" variable and
+// separate operator kill switch, so the two collapse into one flag here.
 /** The state loop's on/off switch. Kill-switch semantics (see `stateWindowSetting`):
  * unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it ON, a recognized
  * negative (`0`/`false`/`no`/`off`) turns it OFF as an operator choice, and anything else

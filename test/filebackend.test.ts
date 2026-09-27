@@ -1,5 +1,5 @@
-// The file backend: Σ storage as a JSON file, replacing sproot's Postgres `agent_state`
-// table for a standalone extension. See src/backend/filebackend.ts.
+// Tests for the file backend: Σ storage as a JSON file for a standalone extension.
+// See src/backend/filebackend.ts.
 
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -80,7 +80,7 @@ describe("commitFileState", () => {
 		expect(String(second.doc.step)).toBe("2");
 	});
 
-	test("a stale version is refused with sproot's own wording, and nothing is written", async () => {
+	test("a stale version is refused with the CAS error's exact wording, and nothing is written", async () => {
 		await commitFileState(statePath, testSchema, patch(`{"objective":"a"}`), 0);
 		let error: unknown;
 		try {

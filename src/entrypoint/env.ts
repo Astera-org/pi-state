@@ -1,8 +1,7 @@
 // Maps THIS repo's own environment variable names onto `StateWindowOptions`
 // (src/stateboundary/statewindow.ts) — the caller-supplied object that module's fail-closed
-// parsing runs on. Deliberately not `SPROOT_*`: this is a standalone extension with no
-// sproot adapter writing a separate "mode" variable and a separate operator kill switch, so
-// the two collapse into one flag here.
+// parsing runs on. This is a standalone extension with no separate "mode" variable and
+// separate operator kill switch, so the two collapse into one flag here.
 
 import type { StateWindowOptions } from "../stateboundary/index.js";
 

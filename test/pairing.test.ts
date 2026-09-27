@@ -1,7 +1,5 @@
-// Ported 1:1 from Astera-org/sproot's agent/pi-extensions/sproot-mcp/pairing.test.mjs,
-// translated from node:test/node:assert to this repo's vitest convention. The rule itself
-// is untouched by the port — it never touched process.env — so every case here is the
-// same case, just phrased through `expect`.
+// Tests for the tool-cycle pairing rule (pairing.ts). The rule never touches
+// process.env, so it is driven directly here with no environment setup.
 
 import { describe, expect, test } from "vitest";
 import { type PairingShape, pairCycles } from "../src/stateboundary/pairing.js";

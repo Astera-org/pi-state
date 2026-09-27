@@ -1,5 +1,5 @@
-// Ported from Astera-org/sproot's internal/agentstate/carriage.go (ENG-1172) — a
-// READING of a stored document against its schema, not a verdict on whether it's true.
+// A READING of a stored document against its schema (ENG-1172), not a verdict on
+// whether it's true.
 import { isPlainDocObject } from "./json.js";
 import { declaredKeys, unmarshal } from "./schema.js";
 /** Reports the ENG-1172 signature: the schema asked for keys and the document holds

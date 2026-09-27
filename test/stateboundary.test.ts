@@ -1,39 +1,24 @@
-// Ported from Astera-org/sproot's agent/pi-extensions/sproot-mcp/stateboundary.test.mjs,
-// translated from node:test/node:assert to this repo's vitest convention.
+// Tests for the transcript-boundary delivery of Σ (stateboundary.ts): pairing, the
+// refusal table, and the ordering of pi's own branch snapshots around a `state_commit`
+// cycle.
 //
-// ADAPTED, not copied verbatim:
-//   - `installStateBoundary` takes a `StateWindowOptions` object rather than an env-var
-//     record, so the refusal table below builds options directly instead of
-//     SPROOT_STATE_LOOP/SPROOT_PI_STATE_WINDOW/SPROOT_PI_STATE_WINDOW_CYCLES strings; one
-//     row (a misspelled mode variable) is dropped because it tested exact-string env
-//     parsing that moved out of the core entirely.
-//   - `scripts/testdata/eng1269/pi-ordering.json` — a recording of a real pinned
-//     `pi-state` binary's event/branch snapshots around one `state_commit` turn, captured
-//     by sproot's `scripts/eng1269_pi_ordering_probe.mjs` — is copied in under
-//     `test/testdata/eng1269/`. It is portable data (pi's own message shapes) with no
-//     dependency on sproot's build or runtime, and it is what pins this module's
-//     assumption about pi's own behavior to a measurement rather than a belief: that the
-//     branch at `tool_result` is UNPAIRED (the closing tool result not yet persisted) and
-//     the branch at `turn_end` is complete. `eng1269_pi_ordering_probe.mjs` itself (which
-//     drives the pinned binary to regenerate the recording) is NOT ported — this repo has
-//     no pinned `pi-state` fork to drive — so the recording here can go stale the next
-//     time sproot bumps that pin; re-capturing it is sproot's job.
-//   - The "bytes probe" describe block (`scripts/eng1248_pi_state_bytes_probe.mjs`, 8
-//     tests) is dropped: unlike the recording above, that script's `retentionVerdict` is
-//     a helper for sproot's OWN build probe (which spawns the pinned binary against a
-//     stub HTTP provider), not a test of this module's exported surface, so porting it
-//     here would just be re-implementing another repo's harness.
-//   - "the record the Go capture side reads > is the SAME custom entry type the window
-//     writes" is dropped — it read `stateindex.ts` off disk to prove a boundary record is
-//     routed through the window's own writer, and that entrypoint isn't built here. The
-//     constant it was really guarding (`STATE_WINDOW_ENTRY_TYPE === "sproot-state-window"`)
-//     is asserted directly in `statewindow.test.ts`.
-//   - `TOOL_PREFIX` came from sproot's `index.ts` entrypoint, which this repo does not
-//     build; the one test that used it now spells the MCP tool name literally.
+// `installStateBoundary` takes a `StateWindowOptions` object rather than an env-var
+// record, so the refusal table below builds options directly rather than parsing
+// environment-variable strings.
 //
-// Net: 49 of the original 59 cases ported (10 dropped, all above; 2 renamed for the
-// options-object vocabulary) — verified against a leaf-test-name diff of this file against
-// `node --test` run over the original .mjs.
+// `test/testdata/eng1269/pi-ordering.json` is a recording of a real pinned `pi-state`
+// binary's event/branch snapshots around one `state_commit` turn, captured by an external
+// probe script. It is portable data (pi's own message shapes) with no dependency on any
+// external build or runtime, and it is what pins this module's assumption about pi's own
+// behavior to a measurement rather than a belief: that the branch at `tool_result` is
+// UNPAIRED (the closing tool result not yet persisted) and the branch at `turn_end` is
+// complete. The probe script itself (which drives the pinned binary to regenerate the
+// recording) is not part of this repo, so the recording here can go stale the next time
+// that pin is bumped elsewhere.
+//
+// The constant `STATE_WINDOW_ENTRY_TYPE` (asserted directly in `statewindow.test.ts`) is
+// the same custom entry type any external capture side would need to read a boundary
+// record by.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
@@ -58,7 +43,7 @@ import {
 const SIGMA_TOOL = "mcp__sproot__state_commit";
 
 /**
- * A successful state_commit payload as sproot's `internal/mcp` stateCommit renders it:
+ * A successful state_commit payload as an MCP-backed `state_commit` tool renders it:
  * compact, numeric `version`, the committed document under `doc`, transport beside them.
  */
 const commitText = (version: number | string, doc: string) =>
@@ -238,9 +223,9 @@ describe("the pi-native adapter refuses every unpairable shape", () => {
 
 describe("sigmaMessage", () => {
 	test("carries the committed document's OWN BYTES, never a reserialization", () => {
-		// 9999999999999999 becomes 10000000000000000 through JSON.parse/stringify, and
-		// sproot's go-core keeps json.Number — so the raw bytes are the only faithful
-		// carrier.
+		// 9999999999999999 becomes 10000000000000000 through JSON.parse/stringify, and an
+		// MCP-backed backend keeps arbitrary-precision numbers — so the raw bytes are the
+		// only faithful carrier.
 		const doc = '{"cursor":9999999999999999,"ratio":0.30000000000000004441}';
 		const m = sigmaMessage(sigmaOf(7, doc), 123);
 		expect(m.role).toBe("user");
@@ -345,14 +330,14 @@ const ctxWith = (branch: unknown[]) => ({ sessionManager: { getBranch: () => bra
  * produce is the point of the refusal table above. What could not be synthetic, and was,
  * is the branch pi HANDS US at each event.
  *
- * `scripts/eng1269_pi_ordering_probe.mjs` (sproot) drove the pinned binary through a real
+ * An external probe script drove a pinned `pi-state` binary through a real
  * `state_commit` cycle and wrote down the event pi delivered and the branch
  * `getBranch()` held at that moment. The replay below drives this module against that,
  * so the ordering is pinned to a measurement instead of to the author's belief about
  * one — which is the defect this recording exists for: a module that planned on
  * `tool_result`, where the last cycle is unpaired, would collapse every boundary to Σ
- * alone, and eleven checks stayed green in sproot's history because every hand-built
- * fixture contained the finished cycle.
+ * alone, and eleven checks stayed green in this mechanism's history because every
+ * hand-built fixture contained the finished cycle.
  */
 const RECORDING = JSON.parse(readFileSync(new URL("./testdata/eng1269/pi-ordering.json", import.meta.url), "utf8"));
 
@@ -600,7 +585,7 @@ describe("installStateBoundary", () => {
 	 * The branch the `tool_result` handler sees and the branch the `turn_end` handler
 	 * sees are both pi's own, taken from the pinned binary mid-cycle. A module that
 	 * plans on `tool_result` reads the first, cannot pair it, and collapses to Σ
-	 * alone — which is what sproot's history shipped once. Asserting the boundary COUNT
+	 * alone — which is a regression this mechanism shipped once. Asserting the boundary COUNT
 	 * after each event and then the retained ROLES is what makes that fail here: a count
 	 * alone passes on the collapse, and roles alone would not notice a boundary written
 	 * one event too early.
@@ -649,7 +634,7 @@ describe("installStateBoundary", () => {
 	 * id `X`, any later result reusing `X` still matched the standing Σ on its id — and pi
 	 * replays a repeated id verbatim, onto failed results too.
 	 *
-	 * Driven through the REAL cache, registered first exactly as sproot's entrypoint does,
+	 * Driven through the REAL cache, registered first exactly as a real entrypoint does,
 	 * because the coupling between the two handlers is the thing under test.
 	 */
 	test("a REUSED tool_call_id does not arm the boundary unless the event is itself an accepted commit", () => {
@@ -833,10 +818,9 @@ describe("installStateBoundary", () => {
 describe("the byte count is counted, never materialized", () => {
 	// `bytesBefore` and `bytesAfter` are HELD versus SENT, and how they are counted decides
 	// how much transcript fits under pi's heap limit. These two moved into this module
-	// with sproot's ENG-1294: the subject is the byte counter, which used to be
-	// `statewindow.ts`'s `byteLength` over a request body and is now this module's
-	// `messagesBytes` over the held branch — the retired rewrite took the counter it
-	// measured with it.
+	// with ENG-1294: the subject is the byte counter, which used to be `statewindow.ts`'s
+	// `byteLength` over a request body and is now this module's `messagesBytes` over the
+	// held branch — the retired rewrite took the counter it measured with it.
 	const multibyte = (n: number) => "héllo 日本 \u{1F600} ".repeat(n);
 	const cfg = { cycles: 2 };
 	const tally = { requests: 1, rewrites: 0, refusals: 0 };

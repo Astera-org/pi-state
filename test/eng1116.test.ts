@@ -1,6 +1,5 @@
-// Ported 1:1 from Astera-org/sproot's internal/agentstate/eng1116_test.go — ENG-1116:
-// a declared key's TYPE is published, not just its name. See that file for the full
-// rationale (two live runs each lost an episode to a wrong type guess).
+// ENG-1116: a declared key's TYPE is published, not just its name — two live runs each
+// lost an episode to a wrong type guess.
 
 import { describe, expect, test } from "vitest";
 import {
