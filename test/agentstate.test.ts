@@ -4,6 +4,7 @@
 import { describe, expect, test } from "vitest";
 import {
 	AgentStateSchemaError,
+	DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT,
 	DEFAULT_MAX_STATE_BYTES,
 	declaredKeys,
 	JsonNumber,
@@ -12,6 +13,7 @@ import {
 	merge,
 	parsePatch,
 	parseSchema,
+	resolveAutoMaxStateBytes,
 	schemaCap,
 	TooLargeError,
 	TypeMismatchError,
@@ -187,6 +189,39 @@ test("parseSchema", () => {
 	expect(Object.keys(empty.keys)).toHaveLength(0);
 });
 
+// There is no ceiling on maxStateBytes: an operator sizing Σ against a large context
+// window may declare a cap well above the old fixed 64 KiB limit.
+test("parseSchema accepts a maxStateBytes above the old 64 KiB ceiling", () => {
+	const s = parseSchema(`{"maxStateBytes":1048576,"keys":{"a":{"type":"string"}}}`);
+	expect(schemaCap(s)).toBe(1048576);
+});
+
+test("parseSchema reads autoMaxStateBytesPercent on a schema with no maxStateBytes", () => {
+	const s = parseSchema(`{"autoMaxStateBytesPercent":70,"keys":{"a":{"type":"string"}}}`);
+	expect(s.maxStateBytes).toBeUndefined();
+	expect(s.autoMaxStateBytesPercent).toBe(70);
+	// Not yet resolved into a concrete maxStateBytes: agentstate cannot know the context
+	// window, so schemaCap still falls back to DEFAULT_MAX_STATE_BYTES — the last resort
+	// — until a caller that does know it (src/entrypoint) resolves auto sizing.
+	expect(schemaCap(s)).toBe(DEFAULT_MAX_STATE_BYTES);
+});
+
+// Auto sizing is the DEFAULT for a schema that declares no maxStateBytes, not an
+// opt-in — so a schema with neither field at all is exactly as much "auto" as one that
+// declares a percent, just at DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65).
+test("a schema with no maxStateBytes and no autoMaxStateBytesPercent is still auto, at the default percent", () => {
+	const s = parseSchema(`{"keys":{"a":{"type":"string"}}}`);
+	expect(s.maxStateBytes).toBeUndefined();
+	expect(s.autoMaxStateBytesPercent).toBeUndefined();
+	expect(schemaCap(s)).toBe(DEFAULT_MAX_STATE_BYTES);
+});
+
+test("parseSchema refuses an autoMaxStateBytesPercent outside 1-100", () => {
+	for (const bad of [0, -5, 101, 1000]) {
+		expect(() => parseSchema(`{"autoMaxStateBytesPercent":${bad},"keys":{}}`)).toThrow(AgentStateSchemaError);
+	}
+});
+
 // The growth-shaped schema is refused at AUTHORING time: an unbounded list cannot be
 // written down, so the "history array" shape has nowhere to live.
 describe("parseSchema refuses an unbounded list and other mistakes", () => {
@@ -196,8 +231,9 @@ describe("parseSchema refuses an unbounded list and other mistakes", () => {
 		["maxItems on a string", `{"keys":{"a":{"type":"string","maxItems":3}}}`],
 		["an unknown type", `{"keys":{"a":{"type":"array"}}}`],
 		["an empty key name", `{"keys":{"":{"type":"string"}}}`],
-		["a cap above the ceiling", `{"maxStateBytes":1048576,"keys":{"a":{"type":"string"}}}`],
 		["a negative cap", `{"maxStateBytes":-1,"keys":{"a":{"type":"string"}}}`],
+		["an autoMaxStateBytesPercent below 1", `{"autoMaxStateBytesPercent":0,"keys":{"a":{"type":"string"}}}`],
+		["an autoMaxStateBytesPercent above 100", `{"autoMaxStateBytesPercent":101,"keys":{"a":{"type":"string"}}}`],
 		["an unknown schema field", `{"maxBytes":10,"keys":{}}`],
 		["an unknown field on a key", `{"keys":{"a":{"type":"string","max":3}}}`],
 		["malformed json", `{"keys":`],
@@ -215,4 +251,43 @@ describe("parseSchema refuses an unbounded list and other mistakes", () => {
 test("merge revalidates the schema", () => {
 	const bad = { keys: { history: { type: "list" as const } } };
 	expect(() => merge(undefined, { history: ["a"] }, bad)).toThrow(AgentStateSchemaError);
+});
+
+describe("resolveAutoMaxStateBytes", () => {
+	test("the byte-per-token math: contextWindowTokens * bytesPerToken * percent / 100, floored", () => {
+		expect(resolveAutoMaxStateBytes(50, 1000, 4)).toBe(2000);
+		// Not evenly divisible — the result floors rather than rounds.
+		expect(resolveAutoMaxStateBytes(65, 1000, 4)).toBe(2600);
+		expect(resolveAutoMaxStateBytes(33, 1000, 4)).toBe(1320);
+	});
+
+	test("defaults bytesPerToken to 4", () => {
+		expect(resolveAutoMaxStateBytes(50, 1000)).toBe(resolveAutoMaxStateBytes(50, 1000, 4));
+	});
+
+	test("an explicit bytesPerToken overrides the default", () => {
+		expect(resolveAutoMaxStateBytes(50, 1000, 2)).toBe(1000);
+		expect(resolveAutoMaxStateBytes(50, 1000, 8)).toBe(4000);
+	});
+
+	// DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65) is the percent a caller should pass when
+	// a schema turns on auto mode but does not say how much — resolveAutoMaxStateBytes
+	// itself never defaults percent, so this is what "the default-percent case" looks
+	// like at the call site.
+	test("the default-percent case: a caller passing DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT", () => {
+		expect(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT).toBe(65);
+		expect(resolveAutoMaxStateBytes(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, 200000)).toBe(520000);
+	});
+
+	test.each([
+		["a zero percent", 0, 1000, 4],
+		["a negative percent", -1, 1000, 4],
+		["a percent above 100", 101, 1000, 4],
+		["a zero context window", 50, 0, 4],
+		["a negative context window", 50, -1, 4],
+		["a zero bytesPerToken", 50, 1000, 0],
+		["a negative bytesPerToken", 50, 1000, -1],
+	])("rejects %s", (_name, percent, contextWindowTokens, bytesPerToken) => {
+		expect(() => resolveAutoMaxStateBytes(percent, contextWindowTokens, bytesPerToken)).toThrow();
+	});
 });

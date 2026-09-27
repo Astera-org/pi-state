@@ -1,11 +1,33 @@
 import { type DocObject } from "./json.js";
-/** The cap applied when a schema declares none. 4 KiB keeps Σ a small, bounded slice of
- * every request's prompt (it is resent in full on every turn) while still holding a
- * real handful of structured fields — the point of a default an operator never has to
- * think about is that it is generous enough not to need raising for an ordinary schema. */
+/** The cap applied when a schema declares none — and neither auto mode nor an explicit
+ * maxStateBytes resolves one first. 4 KiB keeps Σ a small, bounded slice of every
+ * request's prompt (it is resent in full on every turn) while still holding a real
+ * handful of structured fields — the point of a default an operator never has to think
+ * about is that it is generous enough not to need raising for an ordinary schema. */
 export declare const DEFAULT_MAX_STATE_BYTES = 4096;
-/** The largest cap a schema may declare. */
-export declare const MAX_STATE_BYTES_CEILING: number;
+/** The percent auto sizing uses when a schema declares no maxStateBytes and does not
+ * say how much either (`autoMaxStateBytesPercent` absent) — the middle of the 50-80%
+ * range a caller sizing Σ against a context window should reasonably pick from. */
+export declare const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 65;
+/** ~4 bytes per token: the same rough JSON-text-to-token ratio used to size other
+ * prompt-bound budgets in this codebase. Only an approximation — actual bytes-per-token
+ * varies with tokenizer and content — but good enough to turn a token-denominated
+ * context window into a byte-denominated Σ cap without another round trip to a
+ * tokenizer. */
+export declare const DEFAULT_BYTES_PER_TOKEN = 4;
+/**
+ * Resolves auto mode's percent-of-context-window sizing into a concrete byte count.
+ * Pure math: `agentstate` has no I/O and no notion of "the current model", so it cannot
+ * learn a context window itself — the caller (this repo's `src/entrypoint`, which talks
+ * to `pi` and can learn the active model's context window) supplies it and is expected
+ * to substitute the result into a Schema's `maxStateBytes` before merge or cap
+ * enforcement ever sees it (see schemaCap, merge.ts).
+ *
+ * `percent` is not defaulted here — pass DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT yourself
+ * when a schema's own `autoMaxStateBytesPercent` is absent, so this function stays a
+ * single unconditional formula: `floor(contextWindowTokens * bytesPerToken * percent / 100)`.
+ */
+export declare function resolveAutoMaxStateBytes(percent: number, contextWindowTokens: number, bytesPerToken?: number): number;
 /** Bounds one key's `desc`, in bytes. */
 export declare const MAX_DESC_BYTES = 160;
 /** The declared type of one top-level Sigma key. There is deliberately no "anything"
@@ -34,10 +56,30 @@ export interface Field {
  * merged document. A schema with no keys refuses every non-empty patch. */
 export interface Schema {
     keys: Record<string, Field>;
-    /** Caps the merged document's canonical JSON size. Absent/0 => DEFAULT_MAX_STATE_BYTES. */
+    /** Caps the merged document's canonical JSON size. An explicit positive value here
+     * always wins, full stop — it overrides auto sizing entirely. Absent (or 0) means
+     * "size me automatically": this is now the DEFAULT, not an opt-in — a schema that
+     * says nothing about its cap gets a context-window-relative one, not a silent fixed
+     * 4096. See autoMaxStateBytesPercent, resolveAutoMaxStateBytes, and schemaCap. */
     maxStateBytes?: number;
+    /** The percent (1-100) auto sizing uses when maxStateBytes is absent. Optional;
+     * defaults to DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65) when absent too.
+     *
+     * `agentstate` is pure logic with no I/O and cannot resolve auto sizing itself — it
+     * does not know what model is running. A schema with no maxStateBytes stays at
+     * DEFAULT_MAX_STATE_BYTES (via schemaCap) until some caller that DOES know the
+     * context window (this repo's src/entrypoint) resolves this percent into a concrete
+     * maxStateBytes using resolveAutoMaxStateBytes, and substitutes that back onto this
+     * schema before merge or cap enforcement runs. DEFAULT_MAX_STATE_BYTES is the
+     * last-resort fallback for when that resolution genuinely cannot happen anywhere
+     * (no context-window information available at all), not the normal case. */
+    autoMaxStateBytesPercent?: number;
 }
-/** The effective byte cap for the merged document. */
+/** The effective byte cap for the merged document, for a schema whose auto sizing (if
+ * any) has already been resolved by a caller that knows the context window — or that
+ * has none to resolve. An explicit maxStateBytes wins; otherwise this is the
+ * last-resort DEFAULT_MAX_STATE_BYTES fallback, not auto sizing itself (agentstate
+ * cannot compute that — see autoMaxStateBytesPercent). */
 export declare function schemaCap(schema: Schema): number;
 /** The declared key names, sorted. */
 export declare function declaredKeys(schema: Schema): string[];

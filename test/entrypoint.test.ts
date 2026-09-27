@@ -288,3 +288,61 @@ describe("restart survival (ENG-1487's acceptance bar): Σ outlives the process"
 		expect(getPayload).toMatchObject({ exists: true, version: 1, doc: { objective: "ship it" } });
 	});
 });
+
+describe("auto sizing (the default for a schema with no maxStateBytes): resolving it from a context window", () => {
+	async function writeAutoSchema(overrides: Record<string, unknown> = {}): Promise<void> {
+		await writeFile(schemaPath, JSON.stringify({ keys: { objective: { type: "string" } }, ...overrides }), "utf8");
+	}
+
+	async function maxStateBytesFromStateGet(pi: ReturnType<typeof fakePi>): Promise<number> {
+		const result = await pi.tools.get("state_get")!.execute("get-1", {});
+		return JSON.parse(result.content[0]!.text).maxStateBytes;
+	}
+
+	test("with no context window resolvable at all, falls back to DEFAULT_MAX_STATE_BYTES", async () => {
+		await writeAutoSchema();
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: {} });
+		expect(await maxStateBytesFromStateGet(pi)).toBe(4096);
+	});
+
+	test("PI_STATE_CONTEXT_WINDOW_TOKENS resolves it at install time, before any session starts", async () => {
+		await writeAutoSchema();
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_CONTEXT_WINDOW_TOKENS: "100000" } });
+		expect(await maxStateBytesFromStateGet(pi)).toBe(260000); // 65% of 100000 tokens * 4 bytes/token
+	});
+
+	test("session_start's live model.contextWindow supersedes the env-var guess", async () => {
+		await writeAutoSchema();
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_CONTEXT_WINDOW_TOKENS: "100000" } });
+		expect(await maxStateBytesFromStateGet(pi)).toBe(260000);
+
+		const ctx = { model: { contextWindow: 200000 }, sessionManager: { getBranch: () => [] } };
+		for (const h of pi.handlers) if (h.event === "session_start") h.handler({}, ctx);
+		expect(await maxStateBytesFromStateGet(pi)).toBe(520000);
+	});
+
+	test("model_select re-resolves it against the newly selected model", async () => {
+		await writeAutoSchema({ autoMaxStateBytesPercent: 50 });
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: {} });
+		expect(await maxStateBytesFromStateGet(pi)).toBe(4096);
+
+		const event = { type: "model_select", model: { contextWindow: 100000 }, source: "set" };
+		for (const h of pi.handlers) if (h.event === "model_select") h.handler(event, {});
+		expect(await maxStateBytesFromStateGet(pi)).toBe(200000); // 50% of 100000 tokens * 4 bytes/token
+	});
+
+	test("an explicit maxStateBytes in the schema file always wins over auto sizing", async () => {
+		await writeAutoSchema({ maxStateBytes: 4096 });
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_CONTEXT_WINDOW_TOKENS: "100000" } });
+		expect(await maxStateBytesFromStateGet(pi)).toBe(4096);
+
+		const ctx = { model: { contextWindow: 200000 }, sessionManager: { getBranch: () => [] } };
+		for (const h of pi.handlers) if (h.event === "session_start") h.handler({}, ctx);
+		expect(await maxStateBytesFromStateGet(pi)).toBe(4096);
+	});
+});

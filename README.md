@@ -37,7 +37,9 @@ agent's state may hold —
 
 — in the grammar `agentstate.parseSchema` accepts (documented in full under
 `src/agentstate` below: five kinds, a closed key set, an optional per-key `desc`, and a
-byte cap on the merged document). A schema with no keys is valid but refuses every
+byte cap on the merged document). `maxStateBytes` is optional — omit it and the cap is
+sized automatically instead of defaulting to a fixed number; see "Auto sizing" under
+`src/entrypoint` below. A schema with no keys is valid but refuses every
 non-empty patch, so a missing or empty file is not a usable default — installation fails
 loudly, with an actionable message, rather than silently registering a `state_commit`
 that can never succeed.
@@ -67,10 +69,14 @@ Highlights, since they're easy to get wrong by reaching for the built-ins:
   number as its exact source digits (a `JsonNumber`, mirroring Go's `json.Number`),
   because `9999999999999999` silently becomes `10000000000000000` once it passes
   through a JS `number`.
-- The byte cap (`maxStateBytes`, 4096 by default, 65536 ceiling) is measured on the
-  **merged** document's canonical JSON, and a number counts toward it in its
-  exponent-free decimal form (`1e10000` is 16 bytes of JSON and ten thousand and one
-  digits expanded) — see `src/agentstate/number.ts`.
+- The byte cap (`maxStateBytes`) is measured on the **merged** document's canonical
+  JSON, and a number counts toward it in its exponent-free decimal form (`1e10000` is 16
+  bytes of JSON and ten thousand and one digits expanded) — see
+  `src/agentstate/number.ts`. There is no ceiling on a declared `maxStateBytes`, and a
+  schema that declares none at all is sized **automatically**, not defaulted to a fixed
+  number: see "Auto sizing" under `src/entrypoint` below for how that resolves in
+  practice, and `DEFAULT_MAX_STATE_BYTES` (4096) for the last-resort fallback when it
+  genuinely cannot.
 - A schema's key set is closed and each key has exactly one of five kinds (`string`,
   `number`, `bool`, `object`, `list`); a `list` must declare `maxItems`, and an array
   may never appear inside an object value at any depth.
@@ -131,7 +137,7 @@ working directory:
 
 | File | Purpose | Override |
 | --- | --- | --- |
-| `.pi-state/schema.json` | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`) | `PiStateOptions.schemaPath` |
+| `.pi-state/schema.json` | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below) | `PiStateOptions.schemaPath` |
 | `.pi-state/state.json` | Σ itself, as `src/backend` reads and writes it | `PiStateOptions.statePath` |
 
 The schema file is **required** — there is no sane default (a schema with no keys refuses
@@ -145,10 +151,33 @@ operator kill switch, rather than splitting them into two variables:
 | --- | --- | --- |
 | `PI_STATE_LOOP` | the state loop's on/off switch. Kill-switch semantics: unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it **on**; a recognized negative (`0`/`false`/`no`/`off`) turns it off; anything else is unrecognized and also refuses (fail closed) | **on** |
 | `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ after a boundary | `4` |
+| `PI_STATE_CONTEXT_WINDOW_TOKENS` | a manual stopgap for auto sizing (below): the active model's context window, in tokens, on a `pi` this entrypoint cannot otherwise learn it from | unset |
 
 Defaulting `PI_STATE_LOOP` to **on** (rather than requiring explicit opt-in) is a
 deliberate choice: installing this extension and declaring a schema should be enough on
 its own to bound the prompt, with zero environment variables required.
+
+**Auto sizing.** A schema that declares no `maxStateBytes` is not defaulted to a fixed
+byte number — it is sized as a percentage of the agent's actual model context window
+instead: `autoMaxStateBytesPercent` (1-100, defaults to 65) percent of the context
+window, at roughly 4 bytes per token. `src/agentstate` is pure logic with no I/O and
+cannot compute this itself (it has no notion of "the current model"); `src/entrypoint`
+is the layer that can, and resolves it from whichever of these two sources answers first:
+
+1. **A live model from `pi`.** `pi`'s own extension API exposes the active model's
+   `contextWindow` to extensions — on `session_start` (`ExtensionContext.model`) and on
+   `model_select` (`ModelSelectEvent.model`) — so this entrypoint reads it there and
+   re-resolves the cap whenever either fires, keeping it current across a mid-session
+   model switch.
+2. **`PI_STATE_CONTEXT_WINDOW_TOKENS`** (above), for install time — before any session
+   has started, so there is no live model yet to ask — or a `pi` that doesn't populate
+   `model` for some reason. A live report from `pi` always supersedes this once one
+   arrives.
+
+An explicit `maxStateBytes` in the schema file always wins over auto sizing, no matter
+what either source reports. If neither source ever resolves, the cap stays at
+`DEFAULT_MAX_STATE_BYTES` (4096) — the same fallback a fixed-cap schema with no
+`maxStateBytes` would have gotten before auto sizing existed.
 
 **Loud refusal.** At install time, if this `pi` exposes no `replaceTranscript`,
 `installPiState` **throws** rather than silently declining — this is a distinct,
