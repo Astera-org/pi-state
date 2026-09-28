@@ -1,66 +1,44 @@
 /**
- * Deliver Σ through pi's TRANSCRIPT BOUNDARY instead of a request rewrite.
+ * Delivers Σ through pi's transcript boundary.
  *
- * The sibling of `statewindow.ts` and deliberately its narrowest possible
- * variation: everything about WHAT Σ is stays in that module and is imported from it —
- * the `tool_result` cache and its `isError` selection, the escape-aware carving
- * of `doc`/`version` out of the payload's own bytes, the preamble sentence, the
- * configuration's fail-closed parsing, and the `sproot-state-window` transcript record
- * (STATE_WINDOW_ENTRY_TYPE). What changes here is DELIVERY, and delivery alone:
+ * What Σ is lives in `statewindow.ts` and is imported from it: the `tool_result` cache and
+ * its `isError` selection, the escape-aware extraction of `doc`/`version` from the payload
+ * bytes, the preamble sentence, fail-closed configuration parsing, and the
+ * `sproot-state-window` transcript record (STATE_WINDOW_ENTRY_TYPE). This module handles
+ * delivery: one `pi.replaceTranscript([Σ, O, N])` per turn that accepted at least one commit,
+ * carrying the newest Σ.
  *
- *   statewindow.ts   (retired half) every outgoing POST /chat/completions was rewritten
- *                    into [P(+Σ), O, N trailing tool cycles]
- *   this module      one `pi.replaceTranscript([Σ, O, N])` per TURN that accepted at least
- *                    one commit, carrying the newest Σ
+ * A boundary is a session entry pi constructs context from, so the bound survives reload and
+ * branch navigation and is what pi's accounting measures. The session file still grows: a
+ * boundary bounds what the model sees, not what is stored.
  *
- * WHY THAT IS NOT THE SAME FEATURE TWICE. A rewrite is per-request and invisible to pi: pi
- * holds the whole transcript, reports context from the provider's `usage`, and its own
- * accounting never sees the smaller prompt. A boundary is a session entry pi CONSTRUCTS
- * CONTEXT FROM, so the bound is pi's own: it survives reload and branch navigation, it is
- * what pi's accounting measures, and pi will never compact a transcript the model never
- * saw. The session file still grows — a boundary bounds what the model sees, not what is
- * stored.
+ * Properties of the design:
  *
- * THREE THINGS THE BOUNDARY REMOVES BY CONSTRUCTION, rather than by getting them right:
+ *   - No preamble message is emitted. pi rebuilds the system message from its own options when
+ *     the transcript carries none (`getCurrentSystemMessage` returns undefined, so
+ *     `diffSystemPromptSections` emits the full set), so a role policy delivered with
+ *     `--append-system-prompt` is still sent after the boundary.
+ *   - Kept messages are pi's own message objects, taken verbatim from the session, so a kept
+ *     cycle is already paired. pi never applies a replacement between a tool call and its
+ *     result.
+ *   - Σ is written, not located in an existing body.
  *
- *   - A `System message must be at the beginning` 400. This module never emits a
- *     preamble message at all. pi rebuilds the system message from its OWN options when the
- *     transcript no longer carries one (`getCurrentSystemMessage` returns undefined, so
- *     `diffSystemPromptSections` emits the full set), which is why a role policy delivered
- *     with `--append-system-prompt` is still in the request after the boundary.
- *   - The unmatched-`tool_call_id` 400. pi never applies a replacement between a tool call
- *     and its result, and the messages this module keeps are pi's OWN message objects taken
- *     verbatim out of the session, so a kept cycle is paired because it was already paired.
- *   - Re-deriving which body message is Σ. A retired rewrite matched on id AND the
- *     cached result's exact text, because a fetch wrapper only ever sees an
- *     already-serialized body. Here Σ is written, not found.
- *
- * FAIL CLOSED, in this module's own direction. `statewindow.ts`'s retired request-rewrite
- * half failed by forwarding the ORIGINAL body — the prompt stays large and nothing is
- * corrupted. The failure available here is different: a replacement pi cannot send is an
- * agent that cannot take a turn. So every path that cannot produce a well-formed trailing
- * window falls back to Σ ALONE, which needs no pairing and is always well-formed, and says
- * so on the record. A smaller prompt than the role asked for is a degraded turn; a
- * mis-paired one is a 400.
+ * Failure mode: a replacement pi cannot send leaves the agent unable to take a turn, so every
+ * path that cannot produce a well-formed trailing window falls back to Σ alone, which needs
+ * no pairing, and records the reason.
  */
 import { pairCycles } from "./pairing.js";
 import { DEFAULT_TOOL_CYCLES, observeStateCommitResult, resolveStateWindow, sigmaFromResult, stateCommitCache, stateWindowPreamble, stateWindowSetting, } from "./statewindow.js";
 export { DEFAULT_TOOL_CYCLES, resolveStateWindow, stateWindowSetting, };
-/**
- * The entry types that END context construction — pi's own `isContextBoundaryEntry`. A
- * branch walk that ignored them would hand back messages pi itself no longer sends, and the
- * trailing window would then be cut out of a transcript the model has not seen since the
- * last boundary.
- */
+/** Entry types that end context construction (pi's `isContextBoundaryEntry`). */
 const BOUNDARY_ENTRY_TYPES = new Set(["transcript", "compaction"]);
 /**
- * The messages pi currently CONSTRUCTS CONTEXT FROM, in order: everything after the last
+ * The messages pi currently constructs context from, in order: everything after the last
  * boundary entry on this branch.
  *
- * System messages are dropped rather than carried. Not a simplification — pi replays every
- * system message it finds into one leading system message and diffs it against the prompt it
- * wants, so carrying one forward would pin the model to the sections that message happened
- * to hold. Dropping them is what makes pi re-emit the CURRENT prompt, role policy included.
+ * System messages are dropped: pi replays every system message it finds into one leading
+ * system message and diffs it against the wanted prompt, so dropping them makes pi re-emit
+ * the current prompt, role policy included.
  */
 export function heldMessages(entries) {
     let start = 0;
@@ -88,12 +66,11 @@ export function heldMessages(entries) {
  * The tool-call ids an assistant message asked for, in order, or null when it asked for none.
  *
  * pi's `AssistantMessage.content` is `(TextContent | ThinkingContent | ToolCall)[]` and
- * `ToolCall` carries its own `id` — so ONE assistant message can hold N calls, each answered
- * by its own `toolResult` MESSAGE bearing a matching `toolCallId`. That is not a theoretical
- * reading of the types: parallel calls are the ordinary shape of a pi turn.
+ * `ToolCall` carries its own `id`, so one assistant message can hold N calls (parallel
+ * calls), each answered by its own `toolResult` message bearing a matching `toolCallId`.
  *
- * A call with no usable id makes the cycle unverifiable rather than empty — the caller must
- * refuse, not treat the message as call-free — so that case is a REFUSAL below, not a null.
+ * A call with no usable id returns `"unverifiable"`, not null: the caller must refuse rather
+ * than treat the message as call-free.
  */
 function toolCallIdsOf(message) {
     if (message.role !== "assistant" || !Array.isArray(message.content))
@@ -115,15 +92,13 @@ function toolCallIdsOf(message) {
     }
     if (!sawCall)
         return null;
-    // A call block with no usable id makes the cycle UNVERIFIABLE, and that has to be visible in
-    // the RETURN VALUE rather than recoverable from `ids.length` downstream. Returning a short
-    // list would let the zero-results case through segmentCycles entirely: no ids to iterate,
-    // nothing answered, and the arity check reduced to `0 !== 0`.
+    // Signalled in the return value: a short id list would pass the zero-results case through
+    // pairCycles (no ids to iterate, arity check reduced to `0 !== 0`).
     if (missing)
         return "unverifiable";
     return ids;
 }
-/** pi's NATIVE message shape, as `pairCycles` reads it. */
+/** pi's native message shape, as `pairCycles` reads it. */
 function nativeShape(messages) {
     return {
         length: messages.length,
@@ -135,7 +110,7 @@ function nativeShape(messages) {
         },
     };
 }
-/** THIS SIDE'S OWN WORDS for a refusal the shared core decided — pi's field names, not the wire's. */
+/** Renders a pairing refusal using pi's field names. */
 function nativeReason(r) {
     switch (r.code) {
         case "stray-result":
@@ -153,18 +128,13 @@ function nativeReason(r) {
     }
 }
 /**
- * Segment the held messages into complete tool cycles, refusing anything not already fully
- * paired.
+ * Segment the held messages into complete tool cycles, refusing anything not fully paired.
  *
- * THE RULE IS NOT HERE. It is `pairing.ts`'s `pairCycles`, and this function is the
- * pi-native ADAPTER plus this module's vocabulary.
+ * Adapts pi's message shape to `pairCycles` and renders refusals as `{ reason }`. The
+ * `"unverifiable"` judgement (a call content block with no usable id) is made in
+ * `toolCallIdsOf`.
  *
- * `toolCallIdsOf`'s `"unverifiable"` is the one genuinely shape-specific judgement and it
- * stays on this side: a pi assistant message carries its calls as content blocks, so a block
- * with no usable id is discovered here.
- *
- * A refusal is not an error: it means this module cannot PROVE a trailing window is paired,
- * so the caller keeps Σ alone — which needs no pairing and is always well-formed.
+ * A refusal is not an error: the caller keeps Σ alone, which needs no pairing.
  */
 export function segmentCycles(messages) {
     const paired = pairCycles(nativeShape(messages));
@@ -173,18 +143,16 @@ export function segmentCycles(messages) {
     return { cycles: paired.cycles };
 }
 /**
- * Σ as the one message that carries it: the preamble sentence, then the committed document's
- * OWN BYTES.
+ * Σ as a single user message: the preamble sentence followed by the committed document's
+ * exact bytes.
  *
- * `content` is a plain string, which is the whole of why this delivery is admissible. Σ
- * reaches the prompt as the exact sliced bytes of `doc` and `version` — go-core preserves
- * arbitrary-precision numbers and caps the document's exact canonical bytes, and a
- * JavaScript round trip survives neither — so the carrier had to be one that treats them as
- * opaque. pi's `UserMessage.content` is `string | (TextContent | ImageContent)[]` and
- * nothing between here and the provider parses it.
+ * `content` is a plain string, so `doc` and `version` reach the prompt as the exact sliced
+ * bytes; a JavaScript parse/serialize round trip would lose arbitrary-precision numbers and
+ * the canonical byte form. pi's `UserMessage.content` is
+ * `string | (TextContent | ImageContent)[]`, and nothing between here and the provider
+ * parses it.
  *
- * The timestamp is the caller's, not `Date.now()`: it keeps this function pure, which is
- * what lets the unit tests assert the message rather than a shape around it.
+ * `timestamp` is supplied by the caller, which keeps this function pure.
  */
 export function sigmaMessage(sigma, timestamp) {
     return {
@@ -194,17 +162,12 @@ export function sigmaMessage(sigma, timestamp) {
     };
 }
 /**
- * The replacement for one accepted commit: Σ, then the newest user turn, then the last N
+ * The replacement for one accepted commit: Σ, then the newest user turn (O), then the last N
  * complete tool cycles that trail it.
  *
- * The shape is `statewindow.ts`'s retired `[P(+Σ), O, N]` minus P, because pi supplies P
- * itself. The ORDER is Σ first: Σ is the oldest thing in the new transcript (it summarizes
- * everything before it), and a user message before the turn it precedes is the ordering
- * every provider accepts.
- *
- * Messages are pi's own objects, passed through by reference and never rebuilt. That is the
- * pairing guarantee: a kept cycle is paired because it was already paired, and no field of
- * a message this module did not write can be lost by it.
+ * Σ comes first because it is the oldest content in the new transcript. Messages are pi's
+ * own objects, passed by reference and never rebuilt, so kept cycles stay paired and no
+ * message field is lost.
  */
 export function boundaryMessages(sigma, cycles, held, timestamp) {
     const alone = (narrowed) => ({
@@ -217,8 +180,7 @@ export function boundaryMessages(sigma, cycles, held, timestamp) {
     const segmented = segmentCycles(held);
     if ("reason" in segmented)
         return alone(segmented.reason);
-    // O — the newest user message. Everything after it is the work the agent has done since it
-    // was last spoken to, which is what the trailing cycles are.
+    // O is the newest user message; the trailing cycles are the work after it.
     let o = -1;
     for (let i = held.length - 1; i >= 0; i--) {
         if (held[i].role === "user") {
@@ -237,15 +199,13 @@ export function boundaryMessages(sigma, cycles, held, timestamp) {
         kept.push(held[o]);
     for (let i = keepFrom; i < held.length; i++)
         kept.push(held[i]);
-    // A kept run that opens on a tool result would be one whose tool call was cut away. The
-    // cut lands on a cycle START so this cannot happen by construction — which is exactly why
-    // it is checked rather than assumed: the check costs nothing and the failure it would
-    // catch is a provider 400 on a live agent.
+    // The cut lands on a cycle start, so the kept run cannot open on a tool result whose call
+    // was cut away; checked anyway because that would be a provider 400.
     const opener = kept.find((m) => m !== held[o]);
     if (opener !== undefined && opener.role === "toolResult") {
         return alone("the trailing window would open on a tool result whose call was cut away");
     }
-    // O is kept, so it is not among the dropped even though it sits before the cut.
+    // O is kept, so it is excluded from the dropped count although it precedes the cut.
     const droppedSlice = held.slice(0, keepFrom).filter((_, i) => i !== o);
     return {
         messages: [sigmaMessage(sigma, timestamp), ...kept],
@@ -269,13 +229,8 @@ function rolesOf(messages) {
     return roles;
 }
 /**
- * The UTF-8 byte count of what a set of messages would serialize to. `bytesBefore` and
- * `bytesAfter` on the record are HELD versus SENT, and under a boundary both sides are still
- * observable to this module: held is the branch it just read, sent is the replacement it
- * just wrote.
- *
- * `Buffer.byteLength` over `JSON.stringify`, not an encode: it counts without allocating a
- * second copy of what it measures.
+ * The UTF-8 byte count of the JSON serialization of a set of messages. `bytesBefore` and
+ * `bytesAfter` on the record are the held branch and the replacement respectively.
  */
 function messagesBytes(messages) {
     return Buffer.byteLength(JSON.stringify(messages), "utf8");
@@ -283,10 +238,8 @@ function messagesBytes(messages) {
 /**
  * Write one boundary for an accepted commit, and return the record describing it.
  *
- * Pure except for the two calls it makes on `pi`, so the whole decision is unit-testable
- * against a fake: what the replacement holds, what it says was dropped, and every path that
- * refuses. A refusal never throws and never costs the turn — pi keeps the transcript it
- * already had, which is the large-prompt outcome rather than a broken one.
+ * Pure except for the calls it makes on `pi`. A refusal never throws; pi keeps its existing
+ * transcript.
  */
 export function writeBoundary(pi, cfg, tally, deps, ctx) {
     const fail = (reason) => ({ failed: true, reason, ...tally });
@@ -307,10 +260,8 @@ export function writeBoundary(pi, cfg, tally, deps, ctx) {
         pi.replaceTranscript(plan.messages, {
             reason: `state loop: bounded to Σ v${sigma.versionText}`,
             source: STATE_BOUNDARY_SOURCE,
-            // `deliverAs: "steer"` — the end of the current turn, before the next LLM call. Not
-            // "followUp" (which waits for the run to settle and would let another turn go out on
-            // the unbounded transcript) and not "nextTurn" (which waits for a prompt that a
-            // self-driving agent may never receive).
+            // "steer" applies the replacement at the end of the current turn, before the next LLM
+            // call. "followUp" waits for the run to settle; "nextTurn" waits for a prompt.
             deliverAs: "steer",
         });
     }
@@ -326,11 +277,8 @@ export function writeBoundary(pi, cfg, tally, deps, ctx) {
         droppedMessages: plan.dropped.messages,
         droppedCycles: plan.dropped.cycles,
         ...(Object.keys(plan.dropped.roles).length === 0 ? {} : { droppedRoles: plan.dropped.roles }),
-        // ALWAYS `rehomed`. The window's four states answer "where did Σ come from in this
-        // request", which only a reader of an outgoing body can ask; a boundary is written from
-        // the cache every time, so the honest answer is the same one every time. `in-window`
-        // would claim a body position that no longer exists, and the two no-Σ states are
-        // unreachable here — this function has already returned on a null Σ.
+        // Always `rehomed`: a boundary is written from the cache, and the no-Σ states are
+        // unreachable because a null Σ has already returned.
         state: "rehomed",
         stateVersion: sigma.version,
         ...tally,
@@ -339,24 +287,13 @@ export function writeBoundary(pi, cfg, tally, deps, ctx) {
 /** The `source` stamped on every boundary entry, so pi's own UI names who wrote it. */
 export const STATE_BOUNDARY_SOURCE = "pi-state-loop";
 /**
- * The install-time report: this module's ONE remaining silent failure, given a voice.
+ * The install-time report for an off configuration.
  *
- * `installStateBoundary` used to `return` on an off configuration with no log, no record
- * and no counter, and `resolveStateWindow` refuses on THREE conditions that were
- * indistinguishable from outside it. So a run could register its tools, take its turns
- * and have its commits accepted while the boundary was never installed at all — which is
- * exactly what an operator measured (0 boundaries, `retention.refusals` 0, nothing logged
- * anywhere) and could not diagnose. Every OTHER failure path in this module already logs a
- * reason and writes a record; this one now names the condition too.
+ * `resolveStateWindow` refuses on three conditions; this message names which one applied.
  *
- * THE BRACKET IS A WIRE FORMAT, not decoration: `[condition=… fault=…]` is meant to be
- * machine-parseable off stderr by an automated harness that drives a run and wants to
- * refuse one whose bounded arm silently never installed, with the same loudness a
- * missing dependency would get. The lead words are for the human and nothing parses
- * them. The `fault` flag is what keeps the asymmetry `stateWindowSetting` is built on
- * visible on the wire: a negative control arm sets the kill switch ON PURPOSE, and a
- * harness that read that as a defect would refuse every run that carried its own
- * control.
+ * The bracket is a wire format: `[condition=… fault=…]` is machine-parseable from stderr. The
+ * lead words are for humans and are not parsed. `fault` distinguishes a defect from an
+ * operator-set kill switch (a negative control arm sets it on purpose).
  */
 export function stateBoundaryNotInstalled(off) {
     const lead = off.fault ? "state loop NOT INSTALLED" : "state loop off by operator configuration";
@@ -380,36 +317,24 @@ function sessionBranchEntries(ctx) {
     }
 }
 /**
- * Register the boundary on pi's `tool_result` event — the same event the Σ cache observes,
- * and deliberately the same one.
+ * Register the boundary on pi's `tool_result` and `turn_end` events.
  *
- * TWO EVENTS, AND THE SPLIT IS THE WHOLE POINT. `tool_result` answers "was a commit
- * accepted" — pi's `isError` exists nowhere later — but at that moment pi HAS NOT
- * PERSISTED THE RESULT. The branch at `tool_result` ends at the assistant message that
- * made the call:
+ * `tool_result` notices an accepted commit (pi's `isError` is available only there), but at
+ * that moment pi has not persisted the result:
  *
  *   tool_result  […, user, assistant(toolCall:X)]
  *   turn_end     […, user, assistant(toolCall:X), toolResult(X)]
  *
- * Planning there therefore reads a branch whose last cycle is UNPAIRED, `segmentCycles`
- * refuses it, and every accepted commit falls back to Σ alone — the retention half silently
- * never runs. That is not a hypothetical: this module shipped that way, and nothing caught it.
- * The unit tests fed hand-built `getBranch` fixtures that always contained the finished cycle,
- * and a bytes probe passed on Σ-alone because Σ-alone still carries Σ byte-exact. A total
- * collapse of retention was invisible to every instrument aimed at it.
+ * Planning at `tool_result` would read a branch whose last cycle is unpaired, so
+ * `segmentCycles` would refuse it. Therefore `tool_result` arms and `turn_end` plans, when the
+ * branch is complete.
  *
- * So: NOTICE on `tool_result`, PLAN on `turn_end`, where the branch is complete.
- *
- * WHAT THE INVARIANT ACTUALLY IS, because an earlier comment here overstated it as "one
- * boundary per accepted commit" and that is false. Two `state_commit` calls CAN land in one
- * turn — parallel tool calls are the ordinary pi shape: two calls in one assistant message
- * produce two `toolResult`s and one `turn_end`. What holds is ONE BOUNDARY PER TURN THAT
- * ACCEPTED AT LEAST ONE COMMIT, CARRYING THE NEWEST Σ. That is correct rather than a
- * rounding: Σ is CAS-versioned, so the later commit supersedes the earlier, and writing two
- * boundaries would make the first meaningless the instant the second landed. A turn that
+ * Invariant: one boundary per turn that accepted at least one commit, carrying the newest Σ.
+ * Parallel `state_commit` calls in one assistant message produce two `toolResult`s and one
+ * `turn_end`; Σ is CAS-versioned, so the later commit supersedes the earlier. A turn that
  * committed nothing writes nothing.
  *
- * AND IT SAYS SO WHEN IT INSTALLS NOTHING — see stateBoundaryNotInstalled.
+ * An off configuration logs its condition (see stateBoundaryNotInstalled).
  */
 export function installStateBoundary(pi, options, record, deps = {}) {
     const log = deps.log ?? ((message) => console.error(message));
@@ -421,18 +346,15 @@ export function installStateBoundary(pi, options, record, deps = {}) {
     const cfg = setting;
     const tally = { requests: 0, rewrites: 0, refusals: 0 };
     const sigmaOf = deps.sigma ?? (() => stateCommitCache().latest());
-    // The commit noticed on `tool_result` and not yet bounded. Holding the Σ ITSELF rather than
-    // a boolean is deliberate: by the time `turn_end` runs the cache may have moved on, and the
-    // boundary must describe the commit that triggered it.
+    // The commit noticed on `tool_result` and not yet bounded. Holds Σ itself because the cache
+    // may have moved on by `turn_end`; the boundary describes the commit that armed it.
     let pending = null;
     pi.on("tool_result", (event) => {
-        // Only an ACCEPTED commit arms the boundary — and that is a question about THIS EVENT.
-        // See answeredBy.
+        // Only an accepted commit arms the boundary; see answeredBy.
         const latest = sigmaOf();
         if (latest !== null && answeredBy(event, latest))
             pending = latest;
-        // undefined, so pi records the event unmodified: this observes a tool result, never
-        // rewrites one.
+        // undefined leaves the tool result unmodified.
         return undefined;
     });
     pi.on("turn_end", (_event, ctx) => {
@@ -449,43 +371,28 @@ export function installStateBoundary(pi, options, record, deps = {}) {
         else {
             tally.rewrites++;
         }
-        // Re-stamped after the counters moved, so the record carries the totals INCLUDING itself
-        // — what makes "47 commits, 47 refusals" readable from a single entry. The tally's SHAPE
-        // is `statewindow.ts`'s by import rather than by resemblance (`StateWindowTally` above),
-        // so a field added there is a compile error here; what is asserted in a test is the
-        // counting itself, which no type can hold.
+        // Stamped after the counters move, so the record's totals include itself.
         record?.({ ...written, ...tally });
         return undefined;
     });
 }
 /**
- * Whether this `tool_result` event IS an accepted `state_commit` whose result is the Σ now
- * standing in the cache.
+ * Whether this `tool_result` event is an accepted `state_commit` whose result is the Σ now
+ * in the cache.
  *
- * THE ID ALONE IS NOT THAT QUESTION, and answering it that way shipped a real defect at one
- * point: `tool_call_id` carries no cross-turn uniqueness guarantee — pi replays a repeated
- * one verbatim, onto failed results too — and the cache DELIBERATELY RETAINS the previous Σ
- * when a commit is refused, because a refusal is the designed retry path and must not erase
- * the agent's memory. Those two facts compose into the bug: after one accepted commit under
- * id `X`, every later result reusing `X` — a REFUSED commit, or an unrelated successful
- * `read` — matched the standing Σ on its id, armed the boundary, and bounded the transcript
- * on a turn that accepted nothing, against a Σ that had not moved.
+ * The id alone is insufficient: `tool_call_id` is not unique across turns (pi replays a
+ * repeated one verbatim, onto failed results too), and the cache retains the previous Σ when
+ * a commit is refused. A later result reusing the id of an accepted commit, whether a refused
+ * commit or an unrelated successful `read`, would otherwise match the standing Σ.
  *
- * So the event is put through the SAME predicate that decides what may become Σ at all
- * (`observeStateCommitResult`: the exact tool name, a literal `isError === false`, a usable
- * id) rather than a second definition of "accepted" written here.
+ * The event is therefore first put through `observeStateCommitResult` (exact tool name,
+ * literal `isError === false`, usable id), then compared on id and text. Text equality holds
+ * when the cache handler runs before this one; if that ordering breaks, the texts differ and
+ * no boundary is written.
  *
- * Then the id AND the TEXT are compared. A cache handler registered before this one makes an
- * accepted commit already this event's own result by the time this runs; comparing `text` is
- * what establishes that rather than assuming it. If that ordering ever breaks, the texts
- * differ and no boundary is written — a prompt that stays large, which is the safe
- * direction. Two events agreeing on id AND bytes produced the same Σ, so treating them as
- * one is correct rather than a collapse.
- *
- * The tool NAME is deliberately NOT compared again: `observeStateCommitResult` has already
- * refused anything outside the accepted set, so a second comparison is unreachable — and where
- * it would bite (one commit cached under `state_commit`, the next under the `mcp__sproot__`
- * spelling, same id and same bytes) it would refuse a boundary that is legitimate.
+ * The tool name is not compared again: `observeStateCommitResult` has already restricted it
+ * to the accepted set, and a second comparison would reject the same commit cached under a
+ * different accepted spelling (`state_commit` vs the `mcp__sproot__` form).
  */
 function answeredBy(event, sigma) {
     const observed = observeStateCommitResult(event);
