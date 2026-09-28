@@ -8,6 +8,17 @@ document (Sigma, `Σ`) instead of full history, once Sigma is committed via a
 This package is a self-contained `pi` extension: install it, declare a schema, and it
 bounds the prompt on its own.
 
+## Background
+
+- Paper: [SKILL.state: Scalable Long-Horizon Agent Skills](https://arxiv.org/html/2608.26263)
+- Reference implementation: [ASSERT-KTH/replication-structured-state-extraction](https://github.com/ASSERT-KTH/replication-structured-state-extraction)
+
+Mapping to the paper:
+
+- Σ is the paper's execution state.
+- `state_commit` is the paper's state patch (dict merge; `null` deletes a key).
+- Transcript replacement is the paper's bounded prompt.
+
 ## Install
 
 ```bash
