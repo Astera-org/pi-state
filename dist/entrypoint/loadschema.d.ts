@@ -2,8 +2,23 @@ import { type Schema } from "../agentstate/index.js";
 /** Default schema file location, relative to pi's working directory. Sits in the same
  * `.pi-state/` directory as DEFAULT_STATE_PATH (entrypoint/index.ts). */
 export declare const DEFAULT_SCHEMA_PATH = ".pi-state/schema.json";
-/** Reads and parses the schema file. A missing file throws (a schema with no keys refuses
- * every non-empty patch, so there is no usable default). A file that does not parse
- * throws parseSchema's error unchanged. */
-export declare function loadSchemaFile(path: string): Promise<Schema>;
+export interface ResolveSchemaOptions {
+    /** An explicit schema file. When set, it is the only source consulted. */
+    schemaPath?: string;
+    /** Defaults to `os.homedir()`. Exposed for tests. */
+    homeDir?: string;
+    log: (message: string) => void;
+}
+/**
+ * Finds the schema, in order:
+ *
+ * 1. `opts.schemaPath`, when set; a missing file throws.
+ * 2. `./.pi-state/schema.json` (DEFAULT_SCHEMA_PATH, relative to pi's working directory).
+ * 3. `~/.pi-state/schema.json`.
+ * 4. The built-in default (defaultschema.ts).
+ *
+ * Only a missing file (ENOENT) falls through to the next source; a file that exists but
+ * cannot be read or parsed throws. Logs which source was used.
+ */
+export declare function resolveSchema(opts: ResolveSchemaOptions): Promise<Schema>;
 //# sourceMappingURL=loadschema.d.ts.map

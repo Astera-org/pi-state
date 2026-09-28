@@ -55,10 +55,11 @@ grep -rl replaceTranscript "$(dirname "$(readlink -f "$(which pi)")")"
 
 If nothing matches, use a `pi` build that includes the feature (for example, a recent
 checkout built locally). Without it, `pi-state` refuses to install (see "Loud refusal"
-under `src/entrypoint` below; a missing schema is refused likewise, see "Configure").
+under `src/entrypoint` below).
 
-With a schema in place (below) and `pi-state` installed, just run `pi` in a project
-containing `.pi-state/schema.json`. Ask the agent to call `state_get` to confirm the
+With `pi-state` installed, just run `pi` in a project. With no schema file it uses the
+built-in default (see "Configure"); to declare your own, add `.pi-state/schema.json`.
+Ask the agent to call `state_get` to confirm the
 tools are registered — its result carries the declared keys, their types, and the
 current byte cap even before anything has been committed:
 
@@ -80,9 +81,19 @@ straight at the built entrypoint: `pi -e /path/to/pi-state/dist/entrypoint/index
 
 ## Configure
 
-`pi-state` registers two tools, `state_get` and `state_commit`, once it finds a schema
-declaring the shape of Σ. There is no default schema: create `.pi-state/schema.json`
-relative to `pi`'s working directory, naming every key the agent's state may hold:
+`pi-state` registers two tools, `state_get` and `state_commit`, over a schema declaring
+the shape of Σ.
+
+**Quick start: nothing to configure.** A directory with no schema file gets the built-in
+default, so `pi-state` works as soon as it is installed. Its keys are `objective`
+(string), `plan` (list, max 8), `findings` (list, max 16), `tested_hypotheses` (list,
+max 12), `active_files` (list, max 12), `working_dir` (string), `cmd_summary` (string)
+and `open_questions` (list, max 8). It declares no `maxStateBytes`, so the cap is sized
+automatically (see "Auto sizing" under `src/entrypoint` below).
+
+To replace the default, create `.pi-state/schema.json` relative to `pi`'s working
+directory (or `~/.pi-state/schema.json` to apply to every project), naming every key the
+agent's state may hold:
 
 ```json
 {
@@ -100,11 +111,20 @@ closed key set, each key exactly one of five kinds, an optional per-key `desc` (
 merged document. `maxStateBytes` is optional; when omitted the cap is sized automatically
 (see "Auto sizing" under `src/entrypoint` below).
 
-A schema with no keys is valid but refuses every non-empty patch. A missing schema file
-fails installation:
+The schema is looked up in this order, and the source used is logged to stderr:
+
+1. `PiStateOptions.schemaPath`, when set;
+2. `.pi-state/schema.json` in `pi`'s working directory;
+3. `~/.pi-state/schema.json`;
+4. the built-in default.
+
+Only a missing file moves on to the next source. A schema with no keys is valid but
+refuses every non-empty patch. A schema file that exists but does not parse fails
+installation with the parse error, with no fallback to a later source, and so does an
+explicit `schemaPath` that does not exist:
 
 ```
-[pi-state] no schema file at .pi-state/schema.json — declare your agent's Σ shape there (the JSON grammar agentstate.parseSchema accepts: {"keys":{...},"maxStateBytes":N}) before pi-state can register state_commit
+[pi-state] no schema file at custom/schema.json — declare your agent's Σ shape there (the JSON grammar agentstate.parseSchema accepts: {"keys":{...},"maxStateBytes":N}) before pi-state can register state_commit
 ```
 
 The agent calls `state_get`/`state_commit` to read and update Σ, and after any turn that
@@ -178,15 +198,16 @@ The pi extension. `installPiState` (the module's default export, loaded via
 - installs the transcript boundary (`src/stateboundary`'s `installStateBoundary`),
   configured from the environment variables below.
 
-**File layout.** Two files under `.pi-state/`, relative to pi's working directory:
+**File layout.** Files under `.pi-state/`:
 
 | File | Purpose | Override |
 | --- | --- | --- |
-| `.pi-state/schema.json` | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below) | `PiStateOptions.schemaPath` |
-| `.pi-state/state.json` | Σ itself, as `src/backend` reads and writes it | `PiStateOptions.statePath` |
+| `.pi-state/schema.json` (working directory) | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below). Optional | `PiStateOptions.schemaPath` |
+| `~/.pi-state/schema.json` | the same, shared by every project; used when the working directory has none. Optional | `PiStateOptions.homeDir` |
+| `.pi-state/state.json` (working directory) | Σ itself, as `src/backend` reads and writes it | `PiStateOptions.statePath` |
 
-The schema file is **required**; a missing one fails installation with an error message
-naming the expected path.
+With neither schema file, the built-in default applies (see "Configure"). The state file
+is always project-relative, whichever schema is used.
 
 **Environment variables.**
 
@@ -211,9 +232,11 @@ An explicit `maxStateBytes` in the schema file always takes precedence over auto
 If neither source resolves, the cap is `DEFAULT_MAX_STATE_BYTES` (4096).
 
 **Loud refusal.** At install time, if `pi` exposes no `replaceTranscript`,
-`installPiState` throws. The check runs before the schema file is read. Other reasons
+`installPiState` throws. The check runs before the schema is resolved. Other reasons
 the boundary does not install (kill switch off, a malformed cycle count) are logged to
-stderr and skipped instead.
+stderr and skipped instead. A missing schema file is not a refusal (the built-in default
+applies); only a schema file that does not parse, or an explicit `schemaPath` that does
+not exist, throws.
 
 **Known limitation: number precision.** `pi` coerces a tool call's arguments against the
 advertised JSON Schema before `execute` runs, so `state_commit`'s `patch` arrives as an
