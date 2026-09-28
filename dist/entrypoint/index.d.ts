@@ -21,8 +21,12 @@ export interface PiExtensionAPI extends BoundaryAPI {
     registerTool(tool: PiToolDefinition): void;
 }
 export interface PiStateOptions {
-    /** Defaults to `loadschema.ts`'s DEFAULT_SCHEMA_PATH (`.pi-state/schema.json`). */
+    /** An explicit schema file; a missing one is an error. When unset, the schema is looked
+     * up as described at `loadschema.ts`'s `resolveSchema`. */
     schemaPath?: string;
+    /** Where `.pi-state/schema.json` is looked up after the working directory. Defaults to
+     * `os.homedir()`. Exposed for tests. */
+    homeDir?: string;
     /** Defaults to DEFAULT_STATE_PATH (`.pi-state/state.json`). */
     statePath?: string;
     /** Defaults to `process.env`. Exposed for tests. */
@@ -34,7 +38,7 @@ export interface PiStateOptions {
  * installs the transcript boundary.
  *
  * Throws when `pi` exposes no `replaceTranscript`. The check runs first, before the
- * schema file is read. (`installStateBoundary` only logs and skips for its other
+ * schema is resolved. (`installStateBoundary` only logs and skips for its other
  * decline reasons, such as the kill switch or an invalid cycle count.)
  */
 export declare function installPiState(pi: PiExtensionAPI, opts?: PiStateOptions): Promise<void>;

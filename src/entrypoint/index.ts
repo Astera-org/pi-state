@@ -26,7 +26,7 @@ import {
 } from "../stateboundary/index.js";
 import { applyAutoMaxStateBytes, contextWindowFromModelHolder, contextWindowTokensFromEnv } from "./autocap.js";
 import { stateWindowOptionsFromEnv } from "./env.js";
-import { DEFAULT_SCHEMA_PATH, loadSchemaFile } from "./loadschema.js";
+import { resolveSchema } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
 
 /** Default state file location, relative to pi's working directory; beside
@@ -65,8 +65,12 @@ export interface PiExtensionAPI extends BoundaryAPI {
 }
 
 export interface PiStateOptions {
-	/** Defaults to `loadschema.ts`'s DEFAULT_SCHEMA_PATH (`.pi-state/schema.json`). */
+	/** An explicit schema file; a missing one is an error. When unset, the schema is looked
+	 * up as described at `loadschema.ts`'s `resolveSchema`. */
 	schemaPath?: string;
+	/** Where `.pi-state/schema.json` is looked up after the working directory. Defaults to
+	 * `os.homedir()`. Exposed for tests. */
+	homeDir?: string;
 	/** Defaults to DEFAULT_STATE_PATH (`.pi-state/state.json`). */
 	statePath?: string;
 	/** Defaults to `process.env`. Exposed for tests. */
@@ -164,7 +168,7 @@ function stateCommitTool(schema: Schema, statePath: string): PiToolDefinition {
  * installs the transcript boundary.
  *
  * Throws when `pi` exposes no `replaceTranscript`. The check runs first, before the
- * schema file is read. (`installStateBoundary` only logs and skips for its other
+ * schema is resolved. (`installStateBoundary` only logs and skips for its other
  * decline reasons, such as the kill switch or an invalid cycle count.)
  */
 export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = {}): Promise<void> {
@@ -174,9 +178,8 @@ export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = 
 		);
 	}
 	const log = opts.log ?? ((message: string) => console.error(message));
-	const schemaPath = opts.schemaPath ?? DEFAULT_SCHEMA_PATH;
 	const statePath = opts.statePath ?? DEFAULT_STATE_PATH;
-	const schema = await loadSchemaFile(schemaPath);
+	const schema = await resolveSchema({ schemaPath: opts.schemaPath, homeDir: opts.homeDir, log });
 	// Captured before anything assigns schema.maxStateBytes; applyAutoMaxStateBytes needs
 	// the value the schema file declared.
 	const declaredMaxStateBytes = schema.maxStateBytes;

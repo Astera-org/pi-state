@@ -10,7 +10,7 @@ import { commitFileState, readFileState } from "../backend/index.js";
 import { installStateBoundary, installStateCommitCache, recordStateWindowIntoTranscript, seedStateCommitCache, } from "../stateboundary/index.js";
 import { applyAutoMaxStateBytes, contextWindowFromModelHolder, contextWindowTokensFromEnv } from "./autocap.js";
 import { stateWindowOptionsFromEnv } from "./env.js";
-import { DEFAULT_SCHEMA_PATH, loadSchemaFile } from "./loadschema.js";
+import { resolveSchema } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
 /** Default state file location, relative to pi's working directory; beside
  * `loadschema.ts`'s DEFAULT_SCHEMA_PATH. */
@@ -100,7 +100,7 @@ function stateCommitTool(schema, statePath) {
  * installs the transcript boundary.
  *
  * Throws when `pi` exposes no `replaceTranscript`. The check runs first, before the
- * schema file is read. (`installStateBoundary` only logs and skips for its other
+ * schema is resolved. (`installStateBoundary` only logs and skips for its other
  * decline reasons, such as the kill switch or an invalid cycle count.)
  */
 export async function installPiState(pi, opts = {}) {
@@ -108,9 +108,8 @@ export async function installPiState(pi, opts = {}) {
         throw new Error("[pi-state] this pi exposes no replaceTranscript — pi-state cannot bound the prompt on this host, so it refuses to install rather than run a state loop that can never take effect");
     }
     const log = opts.log ?? ((message) => console.error(message));
-    const schemaPath = opts.schemaPath ?? DEFAULT_SCHEMA_PATH;
     const statePath = opts.statePath ?? DEFAULT_STATE_PATH;
-    const schema = await loadSchemaFile(schemaPath);
+    const schema = await resolveSchema({ schemaPath: opts.schemaPath, homeDir: opts.homeDir, log });
     // Captured before anything assigns schema.maxStateBytes; applyAutoMaxStateBytes needs
     // the value the schema file declared.
     const declaredMaxStateBytes = schema.maxStateBytes;
