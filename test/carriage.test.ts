@@ -84,6 +84,7 @@ test("a schema that declares no keys is not an empty Sigma", () => {
 });
 
 // A key present in the document but not declared by the schema is reported in `undeclared`.
+// merge refuses undeclared keys, so this arises only when a schema edit drops a stored key.
 test("a stranded key is named", () => {
 	const got = readCarriage(`{"gone":"left behind by a schema edit","next":"carry on"}`, {
 		keys: { next: { type: "string" } },

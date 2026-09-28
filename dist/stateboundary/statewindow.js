@@ -19,7 +19,11 @@
  */
 /** The trailing tool-cycle depth used when N is not configured. Constant; Σ carries anything older. */
 export const DEFAULT_TOOL_CYCLES = 4;
-/** The ceiling on N. A complete tool cycle is roughly 500–2000 tokens, so 20 cycles is 10–40k tokens. */
+/**
+ * The ceiling on N. A complete tool cycle is roughly 500–2000 tokens, so 20 cycles is
+ * 10–40k tokens; a higher ceiling would allow the unbounded growth this mode exists to
+ * remove. Matches the write-boundary ceiling some external callers use.
+ */
 export const MAX_TOOL_CYCLES = 20;
 /**
  * The names a `state_commit` tool result is accepted under: the local tool name registered by
@@ -46,9 +50,10 @@ export const STATE_WINDOW_ENTRY_TYPE = "sproot-state-window";
 /** Prefix of this module's diagnostics. */
 const LOG_PREFIX = "pi-state-window";
 /**
- * The preamble text placed before Σ's document. It states that earlier turns are absent and
- * names the version so the next `state_commit` has its CAS token; `version` is the payload's
- * raw bytes, quoted exactly as committed.
+ * The preamble text placed before Σ's document. It states that earlier turns are absent
+ * (a state document with no account of the missing history reads as a corrupted transcript)
+ * and names the version so the next `state_commit` has its CAS token; `version` is the
+ * payload's raw bytes, quoted exactly as committed.
  */
 export function stateWindowPreamble(version) {
     return (`Your durable working state, as you last committed it with state_commit (version ${version}). ` +
@@ -59,7 +64,8 @@ const CYCLES_PATTERN = /^[0-9]+$/;
  * N from configuration. Unset or empty yields DEFAULT_TOOL_CYCLES. Otherwise the value must
  * be a plain base-10 integer within 0..MAX_TOOL_CYCLES; anything else (a negative, a huge
  * number, `4oops`, a value with surrounding whitespace) returns null, which turns the mode
- * off. Values are never clamped or defaulted.
+ * off. Values are never clamped or replaced by the default, since either would run the mode
+ * at a depth nobody configured.
  */
 export function parseToolCycles(raw) {
     if (raw === undefined || raw === "")
@@ -453,7 +459,8 @@ const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
  * The prompt receives the raw bytes of `doc` and `version`, never a reserialization: the
  * `agentstate` core preserves arbitrary-precision numbers (`JsonNumber`) and caps the
  * document's exact canonical bytes, and a JavaScript round trip changes both (`JSON.parse`
- * turns `9999999999999999` into `10000000000000000`). `version` as a number is used only for
+ * turns `9999999999999999` into `10000000000000000`, and a re-serialized document can exceed
+ * the byte cap it was measured against). `version` as a number is used only for
  * the transcript record (StateWindowEntryData.stateVersion); the prompt gets `versionText`.
  */
 export function sigmaFromResult(cached) {

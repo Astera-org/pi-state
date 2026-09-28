@@ -25,7 +25,8 @@ function decodeNumberMember(value: DocValue): number {
 }
 
 /** The cap applied when a schema declares no maxStateBytes and auto sizing has not
- * resolved one. */
+ * resolved one. 4 KiB is small enough to resend in full on every request while holding a
+ * useful handful of structured fields. */
 export const DEFAULT_MAX_STATE_BYTES = 4096;
 
 /** The percent auto sizing uses when a schema declares neither maxStateBytes nor

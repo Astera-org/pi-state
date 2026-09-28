@@ -5,7 +5,12 @@
 // snapshots of a pinned `pi-state` binary around one `state_commit` turn, captured by an
 // external probe script not in this repo. It pins that the branch at `tool_result` is
 // unpaired (the closing tool result is not yet persisted) and the branch at `turn_end` is
-// complete.
+// complete. The recording is portable data (pi's own message shapes). The probe script that
+// regenerates it is not in this repo, so the recording can go stale when the pinned binary
+// is bumped.
+//
+// `installStateBoundary` takes a `StateWindowOptions` object, so the refusal table builds
+// options directly instead of parsing environment-variable strings.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";

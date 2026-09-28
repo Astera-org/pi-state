@@ -165,7 +165,8 @@ export function sigmaMessage(sigma, timestamp) {
  * The replacement for one accepted commit: Σ, then the newest user turn (O), then the last N
  * complete tool cycles that trail it.
  *
- * Σ comes first because it is the oldest content in the new transcript. Messages are pi's
+ * Σ comes first because it is the oldest content in the new transcript, and a user message
+ * preceding the turn it precedes is an ordering every provider accepts. Messages are pi's
  * own objects, passed by reference and never rebuilt, so kept cycles stay paired and no
  * message field is lost.
  */
@@ -231,6 +232,7 @@ function rolesOf(messages) {
 /**
  * The UTF-8 byte count of the JSON serialization of a set of messages. `bytesBefore` and
  * `bytesAfter` on the record are the held branch and the replacement respectively.
+ * `Buffer.byteLength` over `JSON.stringify` counts without allocating an encoded copy.
  */
 function messagesBytes(messages) {
     return Buffer.byteLength(JSON.stringify(messages), "utf8");
@@ -261,7 +263,9 @@ export function writeBoundary(pi, cfg, tally, deps, ctx) {
             reason: `state loop: bounded to Σ v${sigma.versionText}`,
             source: STATE_BOUNDARY_SOURCE,
             // "steer" applies the replacement at the end of the current turn, before the next LLM
-            // call. "followUp" waits for the run to settle; "nextTurn" waits for a prompt.
+            // call. "followUp" waits for the run to settle, letting another turn go out on the
+            // unbounded transcript; "nextTurn" waits for a prompt a self-driving agent may never
+            // receive.
             deliverAs: "steer",
         });
     }
@@ -277,8 +281,9 @@ export function writeBoundary(pi, cfg, tally, deps, ctx) {
         droppedMessages: plan.dropped.messages,
         droppedCycles: plan.dropped.cycles,
         ...(Object.keys(plan.dropped.roles).length === 0 ? {} : { droppedRoles: plan.dropped.roles }),
-        // Always `rehomed`: a boundary is written from the cache, and the no-Σ states are
-        // unreachable because a null Σ has already returned.
+        // Always `rehomed`: the window states describe where Σ sat in an outgoing request body.
+        // `in-window` would claim a body position that no longer exists, and the no-Σ states
+        // are unreachable because a null Σ has already returned.
         state: "rehomed",
         stateVersion: sigma.version,
         ...tally,
@@ -326,8 +331,10 @@ function sessionBranchEntries(ctx) {
  *   turn_end     […, user, assistant(toolCall:X), toolResult(X)]
  *
  * Planning at `tool_result` would read a branch whose last cycle is unpaired, so
- * `segmentCycles` would refuse it. Therefore `tool_result` arms and `turn_end` plans, when the
- * branch is complete.
+ * `segmentCycles` would refuse it and every commit would fall back to Σ alone. Therefore
+ * `tool_result` arms and `turn_end` plans, when the branch is complete. A test fixture whose
+ * `getBranch` already contains the finished cycle does not exercise this ordering; the
+ * recording in `test/testdata/turn-event-ordering` does.
  *
  * Invariant: one boundary per turn that accepted at least one commit, carrying the newest Σ.
  * Parallel `state_commit` calls in one assistant message produce two `toolResult`s and one

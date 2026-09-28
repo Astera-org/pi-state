@@ -48,7 +48,11 @@ export interface StateWindowOptions {
 /** The trailing tool-cycle depth used when N is not configured. Constant; Σ carries anything older. */
 export const DEFAULT_TOOL_CYCLES = 4;
 
-/** The ceiling on N. A complete tool cycle is roughly 500–2000 tokens, so 20 cycles is 10–40k tokens. */
+/**
+ * The ceiling on N. A complete tool cycle is roughly 500–2000 tokens, so 20 cycles is
+ * 10–40k tokens; a higher ceiling would allow the unbounded growth this mode exists to
+ * remove. Matches the write-boundary ceiling some external callers use.
+ */
 export const MAX_TOOL_CYCLES = 20;
 
 /**
@@ -80,9 +84,10 @@ export const STATE_WINDOW_ENTRY_TYPE = "sproot-state-window";
 const LOG_PREFIX = "pi-state-window";
 
 /**
- * The preamble text placed before Σ's document. It states that earlier turns are absent and
- * names the version so the next `state_commit` has its CAS token; `version` is the payload's
- * raw bytes, quoted exactly as committed.
+ * The preamble text placed before Σ's document. It states that earlier turns are absent
+ * (a state document with no account of the missing history reads as a corrupted transcript)
+ * and names the version so the next `state_commit` has its CAS token; `version` is the
+ * payload's raw bytes, quoted exactly as committed.
  */
 export function stateWindowPreamble(version: string): string {
 	return (
@@ -102,7 +107,8 @@ const CYCLES_PATTERN = /^[0-9]+$/;
  * N from configuration. Unset or empty yields DEFAULT_TOOL_CYCLES. Otherwise the value must
  * be a plain base-10 integer within 0..MAX_TOOL_CYCLES; anything else (a negative, a huge
  * number, `4oops`, a value with surrounding whitespace) returns null, which turns the mode
- * off. Values are never clamped or defaulted.
+ * off. Values are never clamped or replaced by the default, since either would run the mode
+ * at a depth nobody configured.
  */
 export function parseToolCycles(raw: string | undefined): number | null {
 	if (raw === undefined || raw === "") return DEFAULT_TOOL_CYCLES;
@@ -570,7 +576,8 @@ const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
  * The prompt receives the raw bytes of `doc` and `version`, never a reserialization: the
  * `agentstate` core preserves arbitrary-precision numbers (`JsonNumber`) and caps the
  * document's exact canonical bytes, and a JavaScript round trip changes both (`JSON.parse`
- * turns `9999999999999999` into `10000000000000000`). `version` as a number is used only for
+ * turns `9999999999999999` into `10000000000000000`, and a re-serialized document can exceed
+ * the byte cap it was measured against). `version` as a number is used only for
  * the transcript record (StateWindowEntryData.stateVersion); the prompt gets `versionText`.
  */
 export function sigmaFromResult(cached: CachedStateCommit | null): Sigma | null {
@@ -605,7 +612,8 @@ export interface StateWindowEntryData {
 	 *
 	 *   in-window kept where it stood inside a surviving cycle.
 	 *   absent    no `state_commit` result at all.
-	 *   unproven  results arrived and none proved a commit.
+	 *   unproven  results arrived and none proved a commit (a refusal-only turn, or a result
+	 *             shape this module cannot read); `absent` means the agent has not committed.
 	 */
 	state: "in-window" | "rehomed" | "absent" | "unproven";
 	/** The version Σ proved it committed. Absent on `absent` and `unproven`. */
@@ -614,7 +622,8 @@ export interface StateWindowEntryData {
 
 /**
  * The running tally stamped on every entry, success or refusal. Each entry carries totals,
- * not a delta.
+ * not a delta, so a run that refuses every turn is distinguishable from a healthy one
+ * from a single entry.
  *
  * Counters are per-process and reset on restart; they are never authoritative.
  */
@@ -627,7 +636,10 @@ export interface StateWindowTally {
 
 type StateWindowEntry = StateWindowEntryData & StateWindowTally;
 
-/** The marker appended instead of a record when the mode was on and the boundary could not be produced. */
+/**
+ * The marker appended instead of a record when the mode was on and the boundary could not
+ * be produced. It distinguishes "attempted and failed" from "not attempted".
+ */
 export type StateWindowFailure = { failed: true; reason: string } & StateWindowTally;
 
 /** Σ, ready for the prompt: the raw bytes plus the result that carried them. */

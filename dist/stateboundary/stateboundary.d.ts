@@ -97,7 +97,8 @@ export interface BoundaryPlan {
  * The replacement for one accepted commit: Σ, then the newest user turn (O), then the last N
  * complete tool cycles that trail it.
  *
- * Σ comes first because it is the oldest content in the new transcript. Messages are pi's
+ * Σ comes first because it is the oldest content in the new transcript, and a user message
+ * preceding the turn it precedes is an ordering every provider accepts. Messages are pi's
  * own objects, passed by reference and never rebuilt, so kept cycles stay paired and no
  * message field is lost.
  */
@@ -146,8 +147,10 @@ export declare function stateBoundaryNotInstalled(off: StateWindowOff): string;
  *   turn_end     […, user, assistant(toolCall:X), toolResult(X)]
  *
  * Planning at `tool_result` would read a branch whose last cycle is unpaired, so
- * `segmentCycles` would refuse it. Therefore `tool_result` arms and `turn_end` plans, when the
- * branch is complete.
+ * `segmentCycles` would refuse it and every commit would fall back to Σ alone. Therefore
+ * `tool_result` arms and `turn_end` plans, when the branch is complete. A test fixture whose
+ * `getBranch` already contains the finished cycle does not exercise this ordering; the
+ * recording in `test/testdata/turn-event-ordering` does.
  *
  * Invariant: one boundary per turn that accepted at least one commit, carrying the newest Σ.
  * Parallel `state_commit` calls in one assistant message produce two `toolResult`s and one

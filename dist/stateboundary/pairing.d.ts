@@ -8,11 +8,12 @@
  *
  * The caller is `stateboundary.ts`, over pi's native message shape. The rule lives in its own
  * file so `pairing.test.ts` can exercise it through a synthetic shape (`c` makes calls, `r`
- * answers one) without a shape adapter.
+ * answers one) without a shape adapter. That test pins two failure modes: accepting a cycle
+ * because at least one result followed, and accepting an id-less call with zero results.
  *
  * A refusal is a code, not a sentence: each caller renders it in its own vocabulary
  * (`toolCallId` for pi's field name). The rendered text is a stable format once written to
- * pi's transcript.
+ * pi's transcript: existing tooling asserts specific wording verbatim.
  */
 /** Why a run of messages cannot be cut into paired cycles. */
 export type PairingRefusal = 
