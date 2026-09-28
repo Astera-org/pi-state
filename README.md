@@ -114,8 +114,8 @@ with the document that should replace it, or a refusal naming exactly what was w
 The rationale behind each rule lives in this package's own comments.
 
 **This module is pure logic: no file, network, or process I/O.** It exchanges plain
-strings and JS values with its caller and never reads or writes storage itself; a file
-or database backend is a separate concern layered on top.
+strings and JS values with its caller; storage — a file or database backend — is a
+separate concern layered on top.
 
 Highlights, since they're easy to get wrong by reaching for the built-ins:
 
