@@ -1,7 +1,6 @@
-// Follows JSON Merge Patch (RFC 7396) semantics for the deep half — null deletes, objects
-// merge deep — plus one addition of its own: an array replaces wholesale rather than
-// merging element-by-element, because a list has no natural per-index merge rule and
-// "replace" is at least unsurprising.
+// Merges a patch into a stored document under a schema. Object merging follows JSON Merge
+// Patch (RFC 7396): null deletes, objects merge deep. Arrays replace wholesale; they are
+// never merged element-by-element.
 
 import {
 	NestedListError,
@@ -154,7 +153,7 @@ export function merge(doc: DocObject | null | undefined, patch: DocObject, schem
 	for (const key of sortedKeys(patch)) {
 		const field = schema.keys[key];
 		if (!field) {
-			// Names the offending key AND what is on offer with its types.
+			// The message names the offending key and the declared keys with their types.
 			throw new UnknownKeyError(
 				`key ${quote(key)} (the schema declares ${declaredSummary(schema)}): this key is not declared by the role's state schema`,
 			);

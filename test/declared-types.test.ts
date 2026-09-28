@@ -1,5 +1,5 @@
-// A declared key's TYPE is published, not just its name — two live runs each
-// lost an episode to a wrong type guess.
+// Each declared key's type is published alongside its name (declaredTypes, fieldSpec),
+// and refusals list declared keys with their types.
 
 import { describe, expect, test } from "vitest";
 import {
@@ -15,9 +15,8 @@ import {
 } from "../src/agentstate/index.js";
 import { patch } from "./helpers.js";
 
-// declaredTypesSchema declares one key of every Kind, with names chosen to invite exactly the
-// wrong guess — an `_ids` set that is a list, a `decided` that is a string rather than
-// the bool it sounds like.
+// One key of every kind; names do not indicate type (`decided` is a string, `shelf_ids` is a
+// list).
 function declaredTypesSchema(): Schema {
 	return parseSchema(
 		`{"maxStateBytes":1024,"keys":{` +
@@ -29,9 +28,8 @@ function declaredTypesSchema(): Schema {
 	);
 }
 
-// Builds one JSON value of the type a PUBLISHED spec names — the step an agent performs
-// when it reads declaredTypes and has to write a patch. A list is filled to exactly
-// maxItems, so the bracket is proved to be the real bound rather than decoration.
+// Builds one JSON value of the type a published spec names. A list is filled to exactly
+// its bracketed maxItems.
 function valueForPublishedSpec(spec: string): string {
 	switch (spec) {
 		case "string":
@@ -50,8 +48,7 @@ function valueForPublishedSpec(spec: string): string {
 	return `[${items.join(",")}]`;
 }
 
-// The published contract: what is published is enough to write a patch that
-// COMMITS, for every declared key, on the first try.
+// For every declared key, a value built from the published spec is accepted by merge.
 test("declared types are enough to write an accepted patch", () => {
 	const schema = declaredTypesSchema();
 	const types = declaredTypes(schema);
@@ -67,8 +64,7 @@ test("declared types are enough to write an accepted patch", () => {
 	expect(Object.keys(got)).toHaveLength(Object.keys(schema.keys).length);
 });
 
-// The spec per kind, pinned: a list carries its maxItems in brackets and nothing else
-// carries a bound.
+// A list spec carries its maxItems in brackets; other kinds carry no bound.
 test("field spec names the kind and a list's bound", () => {
 	const cases: Array<[Field, string]> = [
 		[{ type: "string" }, "string"],
@@ -81,14 +77,12 @@ test("field spec names the kind and a list's bound", () => {
 	for (const [field, want] of cases) {
 		expect(fieldSpec(field)).toBe(want);
 	}
-	// And the published map is what the MCP surface marshals, so its rendering has to be
-	// deterministic: declaredTypes builds its keys in sorted order.
+	// declaredTypes orders its keys sorted, so its serialization is deterministic.
 	const want = `{"blocked":"bool","decided":"string","findings":"object","score":"number","shelf_ids":"list[4]"}`;
 	expect(JSON.stringify(declaredTypes(declaredTypesSchema()))).toBe(want);
 });
 
-// A key of a kind the wire form cannot spell would publish a type an agent cannot act
-// on. Nothing can DECLARE such a kind — validateSchema refuses it at authoring time.
+// validateSchema refuses a key whose kind has no spec spelling.
 test("only a spellable kind can be declared", () => {
 	for (const kind of ["string", "number", "bool", "object", "list"] as const) {
 		const field: Field = kind === "list" ? { type: kind, maxItems: 2 } : { type: kind };
@@ -100,9 +94,7 @@ test("only a spellable kind can be declared", () => {
 	expect(() => validateSchema(unspellable)).toThrow();
 });
 
-// The refusals name BOTH sides. An unknown key gets the whole declared surface WITH its
-// types, so the correction does not cost a second refusal to discover the type of the
-// key it was redirected to.
+// A refusal names the offending key and lists every declared key with its type.
 describe("refusals name what was declared and what arrived", () => {
 	test("an unknown key", () => {
 		const schema = declaredTypesSchema();
@@ -154,8 +146,7 @@ describe("refusals name what was declared and what arrived", () => {
 		expect((error as Error).message).toContain(want);
 	});
 
-	// The zero schema declares nothing, and the refusal says THAT rather than rendering
-	// an empty collection the agent might read as "anything goes".
+	// The refusal states that no keys are declared instead of listing an empty collection.
 	test("the zero schema says it declares no keys", () => {
 		let error: unknown;
 		try {

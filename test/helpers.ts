@@ -1,10 +1,9 @@
 // Shared fixtures for the agentstate / merge test suite: `schema()`, `patch(t, raw)` and
-// `render(t, doc)` helpers.
+// `render(t, doc)`.
 
 import { type DocObject, marshal, parsePatch, type Schema } from "../src/agentstate/index.js";
 
-/** One key of each kind, a bounded list, and a cap small enough that the over-cap case
- * is reachable without generating kilobytes of fixture. */
+/** One key of each kind, a bounded list, and a 256-byte cap. */
 export function schema(): Schema {
 	return {
 		maxStateBytes: 256,

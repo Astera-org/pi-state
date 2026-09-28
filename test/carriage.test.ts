@@ -1,5 +1,5 @@
-// The content reading, against its own two failure modes (calling an absence
-// a finding, or a finding an absence).
+// readCarriage: classifies declared keys as carried, not carried, or empty, and reports
+// undeclared keys.
 
 import { describe, expect, test } from "vitest";
 import { carriesNothing, declaredKeys, readCarriage, type Schema } from "../src/agentstate/index.js";
@@ -66,7 +66,7 @@ describe("carriage reads what the schema asked for", () => {
 		expect(got.empty).toEqual(empty);
 		expect(carriesNothing(got)).toBe(nothing);
 
-		// The partition, checked by identity: equal totals are not a partition.
+		// carried and notCarried together partition the declared keys.
 		const seen = [...got.carried, ...got.notCarried].sort();
 		expect(seen).toEqual(declaredKeys(schema));
 		for (const key of got.empty) {
@@ -75,7 +75,7 @@ describe("carriage reads what the schema asked for", () => {
 	});
 });
 
-// A schema that declares NO keys makes "carried none of them" vacuous.
+// With no declared keys, carriesNothing is false.
 test("a schema that declares no keys is not an empty Sigma", () => {
 	const got = readCarriage(`{}`, { keys: {} });
 	expect(carriesNothing(got)).toBe(false);
@@ -83,8 +83,7 @@ test("a schema that declares no keys is not an empty Sigma", () => {
 	expect(got.notCarried).toHaveLength(0);
 });
 
-// A key the DOCUMENT holds and the SCHEMA does not declare is near-unreachable — merge
-// refuses an undeclared key — and is read out for exactly that reason.
+// A key present in the document but not declared by the schema is reported in `undeclared`.
 test("a stranded key is named", () => {
 	const got = readCarriage(`{"gone":"left behind by a schema edit","next":"carry on"}`, {
 		keys: { next: { type: "string" } },

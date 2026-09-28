@@ -92,7 +92,7 @@ describe("commitFileState", () => {
 		expect((error as StaleStateVersionError).message).toBe(
 			"commit named version 0 and the stored version is 1: this agent state commit was decided against a version that has since changed — read the current state and retry",
 		);
-		// The refused commit did not clobber the winning one.
+		// The refused commit leaves the stored state unchanged.
 		const state = await readFileState(statePath);
 		expect(state.version).toBe(1);
 		expect(state.doc.objective).toBe("a");
@@ -115,8 +115,7 @@ describe("commitFileState", () => {
 		expect(rejected.length).toBe(1);
 		expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(StaleStateVersionError);
 
-		// The file on disk is intact, parseable, and holds exactly the winner's document —
-		// never a torn write and never a silent merge of both writers' patches.
+		// The file is parseable and holds exactly the winner's document.
 		const winnerDoc = (fulfilled[0] as PromiseFulfilledResult<{ version: number; doc: Record<string, unknown> }>)
 			.value.doc;
 		const onDisk = await readFileState(statePath);

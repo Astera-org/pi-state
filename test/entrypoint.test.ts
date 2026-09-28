@@ -1,7 +1,6 @@
-// End-to-end proof of the standalone entrypoint's whole chain: a fake `pi` host (same
-// pattern stateboundary.test.ts/statewindow.test.ts already use), the full wiring
-// installed against it, a real file on disk, and `replaceTranscript` receiving the
-// correctly bounded transcript after a commit.
+// End-to-end tests of the standalone entrypoint: a fake `pi` host, the full wiring
+// installed against it, a real state file on disk, and `replaceTranscript` receiving the
+// bounded transcript after a commit.
 
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -69,7 +68,7 @@ afterEach(async () => {
 test("refuses loudly — throws — when this pi exposes no replaceTranscript", async () => {
 	const pi = fakePi({ replaceTranscript: undefined });
 	await expect(installPiState(pi, { schemaPath, statePath })).rejects.toThrow(/replaceTranscript/);
-	// Nothing was registered: the refusal happens before any tool or handler is wired.
+	// No tool or handler is registered.
 	expect(pi.tools.size).toBe(0);
 	expect(pi.handlers.length).toBe(0);
 });
@@ -94,12 +93,12 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 
 		expect([...pi.tools.keys()].sort()).toEqual(["state_commit", "state_get"]);
 
-		// state_get before any commit reads as "before the first commit".
+		// state_get before any commit: exists false, version 0, empty doc.
 		const getResult = await pi.tools.get("state_get")!.execute("get-1", {});
 		const getPayload = JSON.parse(getResult.content[0]!.text);
 		expect(getPayload).toMatchObject({ exists: false, version: 0, doc: {} });
 
-		// The model commits a patch.
+		// Commit a patch.
 		const commitResult = await pi.tools
 			.get("state_commit")!
 			.execute("call-1", { patch: { objective: "ship it", step: 1 }, version: 0 });
@@ -109,7 +108,7 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 		expect(commitPayload.version).toBe(1);
 		expect(commitPayload.doc).toEqual({ objective: "ship it", step: 1 });
 
-		// It really landed on disk, in a real temp-directory file.
+		// The commit is persisted to the state file.
 		const onDisk = await readFileState(statePath);
 		expect(onDisk.exists).toBe(true);
 		expect(onDisk.version).toBe(1);
@@ -117,7 +116,7 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 		const raw = await readFile(statePath, "utf8");
 		expect(() => JSON.parse(raw)).not.toThrow();
 
-		// pi delivers the tool_result and then turn_end, with the branch it held at each.
+		// Deliver tool_result, then turn_end, over the current branch.
 		const branch = [
 			msgEntry(userMsg("go")),
 			msgEntry(callMsg("call-1", "state_commit")),
@@ -135,7 +134,7 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 		for (const h of pi.handlers) if (h.event === "tool_result") h.handler(event, ctx);
 		for (const h of pi.handlers) if (h.event === "turn_end") h.handler({}, ctx);
 
-		// replaceTranscript was called exactly once, with Σ first, then the held cycle.
+		// replaceTranscript is called once, with Σ first, then the held cycle.
 		expect(pi.calls.length).toBe(1);
 		const { messages, options } = pi.calls[0]!;
 		expect((options as Record<string, unknown>).deliverAs).toBe("steer");
@@ -177,17 +176,14 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 });
 
 describe("restart survival: Σ outlives the process", () => {
-	// installStateCommitCache's cache (statewindow.ts's module-level `bound`) is
-	// process-wide, not per-`installPiState` call — two real `pi` processes never share
-	// it, but two `fakePi` installations in the SAME test process would, unless we tear
-	// it down between them exactly like a process exit does. Every case below starts by
-	// discarding whatever a previous install left behind.
+	// The Σ commit cache (statewindow.ts's module-level `bound`) is process-wide, so it is
+	// reset before each case.
 	beforeEach(() => {
 		resetStateCommitCache();
 	});
 
 	test("a fresh process re-seeds Σ from the session's own history, not from anything the first process left in memory", async () => {
-		// --- "process" #1: commits a patch, then is discarded. ---------------------------
+		// --- Process 1: commits a patch. ---
 		const firstProcess = fakePi();
 		await installPiState(firstProcess, {
 			schemaPath,
@@ -200,18 +196,17 @@ describe("restart survival: Σ outlives the process", () => {
 		const commitText = commitResult.content[0]!.text;
 		expect(JSON.parse(commitText)).toMatchObject({ ok: true, version: 1, doc: { objective: "ship it", step: 1 } });
 
-		// It really is on disk: the ONLY thing a real restart could ever recover from.
+		// The commit is on disk.
 		const onDisk = await readFileState(statePath);
 		expect(onDisk.version).toBe(1);
 		expect(onDisk.doc.objective).toBe("ship it");
 
-		// The "process" exits. Nothing from `firstProcess` — its handlers, its tools, its
-		// closures — is reachable from here on; only `resetStateCommitCache()` stands in
-		// for the module-level cache a real restart would never have inherited either.
+		// Process exit: `firstProcess` is not used again; resetStateCommitCache() clears the
+		// module-level cache.
 		resetStateCommitCache();
 		expect(stateCommitCache().latest(), "a fresh process starts with no Σ cached at all").toBeNull();
 
-		// --- "process" #2: a brand-new installation against the SAME state file. ---------
+		// --- Process 2: new installation against the same state file. ---
 		const secondProcess = fakePi();
 		const logs: string[] = [];
 		await installPiState(secondProcess, {
@@ -221,10 +216,8 @@ describe("restart survival: Σ outlives the process", () => {
 			log: (m) => logs.push(m),
 		});
 
-		// pi reloads the session's transcript on `session_start` — which is what a resumed
-		// (or newly started, same working directory) session looks like: the branch it
-		// held already carries the FIRST process's commit, persisted the same way any
-		// `toolResult` entry survives a reload (see statewindow.ts's seedStateCommitCache).
+		// On `session_start` the branch already contains process 1's commit as a `toolResult`
+		// entry (see statewindow.ts's seedStateCommitCache).
 		const historicalToolResult = toolResultMsg("call-1", "state_commit", commitText);
 		const preRestartBranch = [
 			msgEntry(userMsg("go")),
@@ -234,20 +227,14 @@ describe("restart survival: Σ outlives the process", () => {
 		const sessionStartCtx = { sessionManager: { getSessionId: () => "S1", getBranch: () => preRestartBranch } };
 		for (const h of secondProcess.handlers) if (h.event === "session_start") h.handler({}, sessionStartCtx);
 
-		// The reseed alone — before this process has observed a single LIVE tool_result —
-		// already recovered Σ. This is the claim seedStateCommitCache exists to make true;
-		// asserting it directly (rather than only through a later boundary) is what tells
-		// the two survival paths apart if one of them breaks.
+		// The reseed alone recovers Σ, before any live tool_result.
 		expect(
 			stateCommitCache().latest(),
 			"session_start's reseed should have recovered the first process's commit from history",
 		).toEqual({ toolName: "state_commit", toolCallId: "call-1", text: commitText });
 
-		// Now the turn that was interrupted by the "restart" completes: this process
-		// observes the tool_result for the very call the first process already executed
-		// and persisted (a real `pi` resuming mid-turn delivers exactly this — the result
-		// already exists, only the turn's own completion was cut short), and then
-		// `turn_end` fires over the branch as it stands now.
+		// Process 2 observes the tool_result for the call process 1 already executed, then
+		// `turn_end` fires over the current branch.
 		const toolResultEvent = {
 			type: "tool_result",
 			toolName: "state_commit",
@@ -259,8 +246,7 @@ describe("restart survival: Σ outlives the process", () => {
 		for (const h of secondProcess.handlers) if (h.event === "tool_result") h.handler(toolResultEvent, turnCtx);
 		for (const h of secondProcess.handlers) if (h.event === "turn_end") h.handler({}, turnCtx);
 
-		// The boundary fired, and it carries the SAME Σ the first process committed — not
-		// an empty one, and not a fresh version-0 document.
+		// The boundary fires and carries the Σ process 1 committed.
 		expect(secondProcess.calls.length).toBe(1);
 		const { messages, options } = secondProcess.calls[0]!;
 		expect((options as Record<string, unknown>).deliverAs).toBe("steer");
@@ -278,9 +264,7 @@ describe("restart survival: Σ outlives the process", () => {
 
 		resetStateCommitCache();
 
-		// This path needs no session replay at all — the file backend is the whole of it —
-		// but restart survival needs confirming through the installed tools explicitly
-		// rather than assuming a passing file-backend test elsewhere covers this too.
+		// state_get reads from the file backend; no session replay is involved.
 		const secondProcess = fakePi();
 		await installPiState(secondProcess, { schemaPath, statePath });
 		const getResult = await secondProcess.tools.get("state_get")!.execute("get-1", {});
