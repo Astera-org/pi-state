@@ -1,13 +1,13 @@
 {
  "//": [
-  "ENG-1269: RECORDED from the pinned pi-state binary by scripts/eng1269_pi_ordering_probe.mjs.",
-  "Do not hand-edit. Regenerate with `node scripts/eng1269_pi_ordering_probe.mjs --capture`;",
-  "`--check` re-derives it and is what the agent image build runs."
+  "RECORDED from the pinned pi-state binary by an external turn-event-ordering probe.",
+  "The capture/check script is external to this repository.",
+  "Probe labels and document keys are normalized to descriptive names; event ordering is unchanged."
  ],
  "capturedFrom": {
   "piStateCommit": "d47824693a25222bfb69942c07c1140a1b430849",
   "piStateVersion": "0.86.1",
-  "probe": "scripts/eng1269_pi_ordering_probe.mjs"
+  "probe": "external turn-event-ordering probe"
  },
  "ordering": {
   "single-cycle": {
@@ -165,7 +165,7 @@
        },
        {
         "name": "state_commit",
-        "description": "eng1269 ordering probe",
+        "description": "turn event ordering probe",
         "parameters": {
          "type": "object",
          "properties": {}
@@ -241,7 +241,7 @@
       "content": [
        {
         "type": "text",
-        "text": "{\"doc\":{\"eng1269\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
+        "text": "{\"doc\":{\"orderingProbe\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
        }
       ],
       "isError": false,
@@ -297,7 +297,7 @@
       "content": [
        {
         "type": "text",
-        "text": "{\"doc\":{\"eng1269\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
+        "text": "{\"doc\":{\"orderingProbe\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
        }
       ],
       "isError": false
@@ -356,7 +356,7 @@
         "content": [
          {
           "type": "text",
-          "text": "{\"doc\":{\"eng1269\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
+          "text": "{\"doc\":{\"orderingProbe\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
          }
         ],
         "isError": false,
@@ -578,7 +578,7 @@
        },
        {
         "name": "state_commit",
-        "description": "eng1269 ordering probe",
+        "description": "turn event ordering probe",
         "parameters": {
          "type": "object",
          "properties": {}
@@ -660,7 +660,7 @@
       "content": [
        {
         "type": "text",
-        "text": "{\"doc\":{\"eng1269\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
+        "text": "{\"doc\":{\"orderingProbe\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
        }
       ],
       "isError": false,
@@ -679,7 +679,7 @@
       "content": [
        {
         "type": "text",
-        "text": "{\"doc\":{\"eng1269\":2},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":2}"
+        "text": "{\"doc\":{\"orderingProbe\":2},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":2}"
        }
       ],
       "isError": false,
@@ -735,7 +735,7 @@
       "content": [
        {
         "type": "text",
-        "text": "{\"doc\":{\"eng1269\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
+        "text": "{\"doc\":{\"orderingProbe\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
        }
       ],
       "isError": false
@@ -758,7 +758,7 @@
       "content": [
        {
         "type": "text",
-        "text": "{\"doc\":{\"eng1269\":2},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":2}"
+        "text": "{\"doc\":{\"orderingProbe\":2},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":2}"
        }
       ],
       "isError": false
@@ -823,7 +823,7 @@
         "content": [
          {
           "type": "text",
-          "text": "{\"doc\":{\"eng1269\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
+          "text": "{\"doc\":{\"orderingProbe\":1},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":1}"
          }
         ],
         "isError": false,
@@ -836,7 +836,7 @@
         "content": [
          {
           "type": "text",
-          "text": "{\"doc\":{\"eng1269\":2},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":2}"
+          "text": "{\"doc\":{\"orderingProbe\":2},\"maxStateBytes\":4096,\"updatedAt\":\"2026-09-20T00:00:00Z\",\"version\":2}"
          }
         ],
         "isError": false,

@@ -1,6 +1,5 @@
-// The standalone pi extension entrypoint (ENG-1487's "no external server, no Postgres,
-// no MCP round trip" bar): registers `state_get` and `state_commit` as LOCAL pi tools
-// backed by the file backend (`../backend`), and installs the transcript boundary
+// The standalone pi extension entrypoint: registers `state_get` and `state_commit` as
+// LOCAL pi tools backed by the file backend (`../backend`), and installs the transcript boundary
 // (`../stateboundary`). No MCP `connect()`, no receipt file, no external provider
 // registration, no logprobs capture — this extension's whole job is Σ, alone.
 //

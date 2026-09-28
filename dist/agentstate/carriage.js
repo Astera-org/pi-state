@@ -1,8 +1,8 @@
-// A READING of a stored document against its schema (ENG-1172), not a verdict on
+// A READING of a stored document against its schema, not a verdict on
 // whether it's true.
 import { isPlainDocObject } from "./json.js";
 import { declaredKeys, unmarshal } from "./schema.js";
-/** Reports the ENG-1172 signature: the schema asked for keys and the document holds
+/** Reports an empty carriage: the schema asked for keys and the document holds
  * none of them. False for a schema that declares no keys — that makes "carried none of
  * them" vacuously true, a legitimate authored choice rather than a finding. */
 export function carriesNothing(c) {

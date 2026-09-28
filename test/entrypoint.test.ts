@@ -176,7 +176,7 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 	});
 });
 
-describe("restart survival (ENG-1487's acceptance bar): Σ outlives the process", () => {
+describe("restart survival: Σ outlives the process", () => {
 	// installStateCommitCache's cache (statewindow.ts's module-level `bound`) is
 	// process-wide, not per-`installPiState` call — two real `pi` processes never share
 	// it, but two `fakePi` installations in the SAME test process would, unless we tear
@@ -279,7 +279,7 @@ describe("restart survival (ENG-1487's acceptance bar): Σ outlives the process"
 		resetStateCommitCache();
 
 		// This path needs no session replay at all — the file backend is the whole of it —
-		// but ENG-1487's bar is "survives a restart", so it is worth confirming explicitly
+		// but restart survival needs confirming through the installed tools explicitly
 		// rather than assuming a passing file-backend test elsewhere covers this too.
 		const secondProcess = fakePi();
 		await installPiState(secondProcess, { schemaPath, statePath });

@@ -1,4 +1,4 @@
-// ENG-1116: a declared key's TYPE is published, not just its name — two live runs each
+// A declared key's TYPE is published, not just its name — two live runs each
 // lost an episode to a wrong type guess.
 
 import { describe, expect, test } from "vitest";
@@ -15,10 +15,10 @@ import {
 } from "../src/agentstate/index.js";
 import { patch } from "./helpers.js";
 
-// eng1116Schema declares one key of every Kind, with names chosen to invite exactly the
+// declaredTypesSchema declares one key of every Kind, with names chosen to invite exactly the
 // wrong guess — an `_ids` set that is a list, a `decided` that is a string rather than
 // the bool it sounds like.
-function eng1116Schema(): Schema {
+function declaredTypesSchema(): Schema {
 	return parseSchema(
 		`{"maxStateBytes":1024,"keys":{` +
 			`"decided":{"type":"string"},` +
@@ -32,7 +32,7 @@ function eng1116Schema(): Schema {
 // Builds one JSON value of the type a PUBLISHED spec names — the step an agent performs
 // when it reads declaredTypes and has to write a patch. A list is filled to exactly
 // maxItems, so the bracket is proved to be the real bound rather than decoration.
-function eng1116ValueFor(spec: string): string {
+function valueForPublishedSpec(spec: string): string {
 	switch (spec) {
 		case "string":
 			return `"x"`;
@@ -50,10 +50,10 @@ function eng1116ValueFor(spec: string): string {
 	return `[${items.join(",")}]`;
 }
 
-// THE PROPERTY THE TICKET IS ABOUT: what is published is enough to write a patch that
+// The published contract: what is published is enough to write a patch that
 // COMMITS, for every declared key, on the first try.
 test("declared types are enough to write an accepted patch", () => {
-	const schema = eng1116Schema();
+	const schema = declaredTypesSchema();
 	const types = declaredTypes(schema);
 
 	expect(Object.keys(types)).toHaveLength(Object.keys(schema.keys).length);
@@ -61,7 +61,7 @@ test("declared types are enough to write an accepted patch", () => {
 		expect(types).toHaveProperty(name);
 	}
 
-	const fields = declaredKeys(schema).map((name) => `${JSON.stringify(name)}:${eng1116ValueFor(types[name])}`);
+	const fields = declaredKeys(schema).map((name) => `${JSON.stringify(name)}:${valueForPublishedSpec(types[name])}`);
 	const raw = `{${fields.join(",")}}`;
 	const got = merge(undefined, patch(raw), schema);
 	expect(Object.keys(got)).toHaveLength(Object.keys(schema.keys).length);
@@ -84,7 +84,7 @@ test("field spec names the kind and a list's bound", () => {
 	// And the published map is what the MCP surface marshals, so its rendering has to be
 	// deterministic: declaredTypes builds its keys in sorted order.
 	const want = `{"blocked":"bool","decided":"string","findings":"object","score":"number","shelf_ids":"list[4]"}`;
-	expect(JSON.stringify(declaredTypes(eng1116Schema()))).toBe(want);
+	expect(JSON.stringify(declaredTypes(declaredTypesSchema()))).toBe(want);
 });
 
 // A key of a kind the wire form cannot spell would publish a type an agent cannot act
@@ -94,7 +94,7 @@ test("only a spellable kind can be declared", () => {
 		const field: Field = kind === "list" ? { type: kind, maxItems: 2 } : { type: kind };
 		const s: Schema = { keys: { k: field } };
 		expect(() => validateSchema(s)).not.toThrow();
-		expect(() => eng1116ValueFor(fieldSpec(field))).not.toThrow();
+		expect(() => valueForPublishedSpec(fieldSpec(field))).not.toThrow();
 	}
 	const unspellable: Schema = { keys: { k: { type: "timestamp" as Field["type"] } } };
 	expect(() => validateSchema(unspellable)).toThrow();
@@ -105,7 +105,7 @@ test("only a spellable kind can be declared", () => {
 // key it was redirected to.
 describe("refusals name what was declared and what arrived", () => {
 	test("an unknown key", () => {
-		const schema = eng1116Schema();
+		const schema = declaredTypesSchema();
 		let error: unknown;
 		try {
 			merge(undefined, patch(`{"shelves":["a"]}`), schema);
@@ -144,7 +144,7 @@ describe("refusals name what was declared and what arrived", () => {
 			`key "blocked" is declared bool but the patch has string`,
 		],
 	])("%s", (_name, raw, want) => {
-		const schema = eng1116Schema();
+		const schema = declaredTypesSchema();
 		let error: unknown;
 		try {
 			merge(undefined, patch(raw), schema);

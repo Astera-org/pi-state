@@ -1,15 +1,15 @@
 /**
- * ENG-1278: ONE tool-cycle pairing rule, stated apart from any message shape.
+ * ONE tool-cycle pairing rule, stated apart from any message shape.
  *
  * A bounded prompt is cut on cycle boundaries, and a cycle may only be cut out if it is
  * already fully paired: every call this assistant made is answered, none twice, none by a
  * result it did not request, and no result arrives without an id. An unmatched
  * `tool_call_id` in what goes out is a provider 400, not a smaller prompt.
  *
- * THERE IS ONE CALLER TODAY — `stateboundary.ts`, over pi's native message shape. ENG-1278
- * collapsed this rule out of two copies (the second was a `statewindow.ts` fetch
- * wrapper's, over the openai-completions wire shape a request rewrite saw), and ENG-1294
- * then retired that whole delivery mechanism along with its adapter. So the "two shapes"
+ * THERE IS ONE CALLER TODAY — `stateboundary.ts`, over pi's native message shape. This rule
+ * was extracted from two copies (the second was a `statewindow.ts` fetch
+ * wrapper's, over the openai-completions wire shape a request rewrite saw). That second
+ * delivery mechanism was later retired along with its adapter. So the "two shapes"
  * this file was extracted for are now one.
  *
  * IT IS STILL ITS OWN FILE, and the reason is a testing seam rather than a second caller.
@@ -18,9 +18,9 @@
  * and two review findings from the module's history stay pinned as named cases: a cycle
  * accepted on "at least one result followed", and an id-less call with zero results let
  * through. Inlining the rule into `stateboundary.ts` would put that coverage behind the
- * pi-native adapter, which is the thing ENG-1278 bought and the thing the adapter table in
- * `stateboundary.test.ts` is separately for. The two failure modes stay separable: an
- * adapter bug misreads one shape, a rule bug is wrong for every shape at once.
+ * pi-native adapter, which the adapter table in `stateboundary.test.ts` covers separately.
+ * The two failure modes stay separable: an adapter bug misreads one shape, a rule bug is
+ * wrong for every shape at once.
  *
  * THE REFUSAL IS A CODE, NOT A SENTENCE. Each caller renders it in its own vocabulary —
  * `toolCallId` is pi's field name, `tool_call_id` was the retired wire's — because the
