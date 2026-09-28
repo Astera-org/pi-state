@@ -1,12 +1,8 @@
 # pi-state
 
-State compression for [`pi`](https://github.com/earendil-works/pi): keeps a coding
-agent's prompt bounded by replacing its transcript each turn with a small durable JSON
-document (Sigma, `Σ`) instead of full history, once Sigma is committed via a
-`state_commit`-style tool call.
-
-This package is a self-contained `pi` extension: install it, declare a schema, and it
-bounds the prompt on its own.
+State compression for [`pi`](https://github.com/earendil-works/pi). After a turn accepts
+a `state_commit`, this extension replaces the transcript with durable JSON state
+(Sigma, `Σ`), the newest user turn, and trailing tool cycles.
 
 ## Background
 
@@ -25,19 +21,15 @@ Mapping to the paper:
 pi install git:github.com/Astera-org/pi-state
 ```
 
-(or `pi install ./pi-state` from a local checkout, `pi install <source> -l` to install
-project-locally instead of into your global settings, or `pi -e git:github.com/Astera-org/pi-state`
-to try it for one invocation without persisting the install — see `pi`'s own package
-documentation for the full set of install sources and flags).
+Use `pi install ./pi-state` for a local checkout, `pi install <source> -l` for a
+project-local installation, or `pi -e git:github.com/Astera-org/pi-state` for one invocation.
 
 ## Run it standalone
 
-The whole footprint is two files under `.pi-state/` (a schema and Σ itself) and two
-local tools (`state_get`, `state_commit`).
+The extension uses a schema, a state file under `.pi-state/`, and two local tools:
+`state_get` and `state_commit`.
 
-`pi-state` requires a `pi` build that exposes the extension API `pi.replaceTranscript`,
-which it uses to bound the prompt (see `src/entrypoint` below). Install `pi` per its own
-docs:
+`pi-state` requires the `pi.replaceTranscript` extension API. Install `pi`:
 
 ```bash
 curl -fsSL https://pi.dev/install.sh | sh
@@ -53,15 +45,12 @@ with:
 grep -rl replaceTranscript "$(dirname "$(readlink -f "$(which pi)")")"
 ```
 
-If nothing matches, use a `pi` build that includes the feature (for example, a recent
-checkout built locally). Without it, `pi-state` refuses to install (see "Loud refusal"
-under `src/entrypoint` below).
+If nothing matches, use a build with `replaceTranscript`; `pi-state` refuses to install
+without it (see "Installation failures" below).
 
-With `pi-state` installed, just run `pi` in a project. With no schema file it uses the
-built-in default (see "Configure"); to declare your own, add `.pi-state/schema.json`.
-Ask the agent to call `state_get` to confirm the
-tools are registered — its result carries the declared keys, their types, and the
-current byte cap even before anything has been committed:
+Run `pi` in a project. The extension uses the built-in schema unless a schema file
+is found (see "Configure"). Call `state_get` to check registration: its result includes
+declared keys, types, and the byte cap before the first commit:
 
 ```json
 {"ok":true,"version":0,"doc":{},"exists":false,"note":"no state yet — commit with version 0 to create it","declaredKeys":["objective","step"],"declaredTypes":{"objective":"string","step":"number"},"maxStateBytes":4096}
@@ -84,10 +73,8 @@ straight at the built entrypoint: `pi -e /path/to/pi-state/dist/entrypoint/index
 `pi-state` registers two tools, `state_get` and `state_commit`, over a schema declaring
 the shape of Σ.
 
-**Quick start: nothing to configure.** A directory with no schema file gets the built-in
-default, so `pi-state` works as soon as it is installed. Its keys are `objective`
-(string), `plan` (list, max 8), `findings` (list, max 16), `tested_hypotheses` (list,
-max 12), `active_files` (list, max 12), `working_dir` (string), `cmd_summary` (string)
+With no schema file, the built-in default declares `objective` (string), `plan` (list,
+max 8), `findings` (list, max 16), `tested_hypotheses` (list, max 12), `active_files` (list, max 12), `working_dir` (string), `cmd_summary` (string)
 and `open_questions` (list, max 8). It declares no `maxStateBytes`, so the cap is sized
 automatically (see "Auto sizing" under `src/entrypoint` below).
 
@@ -120,8 +107,8 @@ The schema is looked up in this order, and the source used is logged to stderr:
 
 Only a missing file moves on to the next source. A schema with no keys is valid but
 refuses every non-empty patch. A schema file that exists but does not parse fails
-installation with the parse error, with no fallback to a later source, and so does an
-explicit `schemaPath` that does not exist:
+installation with the parse error. An explicit `schemaPath` that does not exist also
+fails installation:
 
 ```
 [pi-state] no schema file at custom/schema.json — declare your agent's Σ shape there (the JSON grammar agentstate.parseSchema accepts: {"keys":{...},"maxStateBytes":N}) before pi-state can register state_commit
@@ -129,7 +116,7 @@ explicit `schemaPath` that does not exist:
 
 The agent calls `state_get`/`state_commit` to read and update Σ, and after any turn that
 commits at least one patch, `pi-state` replaces `pi`'s transcript with `[Σ, the newest
-user turn, the last few trailing tool cycles]` instead of full history (see
+user turn, the last few trailing tool cycles]` (see
 `src/entrypoint` and `src/stateboundary` below). No environment variables are required;
 see **Environment variables** under `src/entrypoint` to tune or disable it.
 
@@ -141,10 +128,8 @@ the document that should replace it, or a refusal naming what was wrong.
 This module performs no file, network, or process I/O. It exchanges plain strings and JS
 values with its caller.
 
-- Numbers are not passed through `JSON.parse`/`JSON.stringify` or the JS `number` type.
-  `src/agentstate/json.ts` implements a JSON reader/writer that keeps every number as its
-  exact source digits (a `JsonNumber`, mirroring Go's `json.Number`); a JS `number` would
-  turn `9999999999999999` into `10000000000000000`.
+- `src/agentstate/json.ts` preserves exact number digits in `JsonNumber` values.
+  JavaScript numbers round `9999999999999999` to `10000000000000000`.
 - The byte cap (`maxStateBytes`) is measured on the **merged** document's canonical JSON,
   and a number counts toward it in its exponent-free decimal form (`1e10000` is 16 bytes
   of JSON and 10001 digits expanded); see `src/agentstate/number.ts`. `maxStateBytes` has
@@ -157,23 +142,17 @@ values with its caller.
 - `merge()` treats `null` as a deletion at any depth, merges objects deep, and replaces
   arrays wholesale (never appends) — see `src/agentstate/merge.ts`.
 
-Naming: functions ported from Go's exported `PascalCase` (`ParseSchema`, `Merge`,
-`Marshal`, ...) are `camelCase` (`parseSchema`, `merge`, `marshal`, ...); types stay
-`PascalCase` (`Schema`, `Field`, `Kind`, `Carriage`).
-
 ## `src/backend`
 
 Σ storage as a JSON file in pi's working directory. `commitFileState` reads the current
 document, merges a patch through `src/agentstate`'s `merge`, and writes the result back
 with a version counter; `readFileState` returns the "before the first commit" shape
-(`exists: false, version: 0, doc: {}`) for a missing or corrupt file instead of throwing.
+(`exists: false, version: 0, doc: {}`) for a missing or corrupt file.
 
-Writes go through a fixed temp path (`<path>.tmp`) created with an exclusive (`O_EXCL`)
-flag, then an atomic rename onto the real path. The rename means a reader never observes
-a torn write. The exclusive create serves as the mutex for the compare-and-set: commits
-racing against the same version open the same temp path, one at a time succeeds, and
-each later one re-reads the stored version and is refused if it has moved. There is no
-separate lock file.
+Writes acquire a fixed temp path (`<path>.tmp`) with exclusive creation (`O_EXCL`),
+then atomically rename it onto the state file. Readers see complete files. The temp
+file serializes concurrent commits: each writer re-reads the version under the lock
+and refuses a stale version.
 
 A compare-and-set names the version it read; a mismatch is refused with:
 
@@ -231,19 +210,15 @@ the first of these sources that answers:
 An explicit `maxStateBytes` in the schema file always takes precedence over auto sizing.
 If neither source resolves, the cap is `DEFAULT_MAX_STATE_BYTES` (4096).
 
-**Loud refusal.** At install time, if `pi` exposes no `replaceTranscript`,
-`installPiState` throws. The check runs before the schema is resolved. Other reasons
-the boundary does not install (kill switch off, a malformed cycle count) are logged to
-stderr and skipped instead. A missing schema file is not a refusal (the built-in default
-applies); only a schema file that does not parse, or an explicit `schemaPath` that does
-not exist, throws.
+**Installation failures.** `installPiState` checks `replaceTranscript` before schema
+lookup and throws if it is absent. Unreadable or invalid schema files and a missing
+explicit `schemaPath` also throw. Missing default schema files use the lookup fallback.
+A disabled or invalid kill switch or malformed cycle count logs to stderr and skips
+the boundary.
 
-**Known limitation: number precision.** `pi` coerces a tool call's arguments against the
-advertised JSON Schema before `execute` runs, so `state_commit`'s `patch` arrives as an
-already-parsed JS value, with numbers as JS `number`s rather than exact source digits.
-A local pi tool has no hook for the raw arguments, so a number in a `state_commit` call
-is stored as `String(n)` of the parsed value, and arbitrary-precision numbers lose
-precision.
+**Known limitation: number precision.** `pi` coerces tool arguments before `execute`.
+The patch arrives as parsed JS values; numbers are stored as `String(n)` and may have
+already lost precision. Local tools have no hook for raw argument text.
 
 ## Development
 

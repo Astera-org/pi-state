@@ -1,11 +1,10 @@
 // Maps this package's environment variables onto `StateWindowOptions`
 // (src/stateboundary/statewindow.ts), the object that module's fail-closed parsing runs
 // on. A single flag, `PI_STATE_LOOP`, serves as both mode and kill switch.
-/** The state loop's on/off switch. Kill-switch semantics (see `stateWindowSetting`):
- * unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it ON, a recognized
- * negative (`0`/`false`/`no`/`off`) turns it OFF as an operator choice, and anything else
- * is an unrecognized value that also refuses (fail closed). Defaults to ON, so no
- * environment variable is required. */
+/**
+ * State-loop kill switch. Unset, empty, or affirmative (1/true/yes/on) allows the mode.
+ * Negative (0/false/no/off) disables it. Unrecognized values refuse installation.
+ */
 export const ENV_STATE_LOOP = "PI_STATE_LOOP";
 /** N, the number of trailing tool cycles kept alongside Σ. Unset means
  * `DEFAULT_TOOL_CYCLES`; see `parseToolCycles` for the parsing contract. */

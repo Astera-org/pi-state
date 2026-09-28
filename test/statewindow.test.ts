@@ -36,9 +36,8 @@ import {
 const SIGMA = "mcp__sproot__state_commit";
 
 /**
- * A successful state_commit result as an MCP-backed `state_commit` tool returns it: numeric
- * `version`, the committed document under `doc`, plus transport fields; compact rendering
- * with Go's map-key ordering.
+ * Successful MCP state_commit payload: numeric version, committed doc, and transport
+ * fields; compact JSON with sorted keys.
  */
 const committed = (version: number, doc?: unknown) =>
 	JSON.stringify({
@@ -322,7 +321,7 @@ describe("Σ selection", () => {
 
 	test("the raw slice respects strings and escapes, and takes the LAST duplicate key like JSON.parse", () => {
 		const nasty = '{"a":"}\\"{ \\\\","b":[1,{"c":"]"}]}';
-		JSON.parse(nasty); // the fixture must be valid JSON, or the test proves nothing
+		JSON.parse(nasty); // Validate the JSON fixture.
 		const raw = `{"version":1,"doc":${nasty},"updatedAt":"x"}`;
 		expect(rawJsonMember(raw, "doc")).toBe(nasty);
 		expect(sigmaOf("c1", raw)?.doc).toBe(nasty);
@@ -337,8 +336,7 @@ describe("Σ selection", () => {
 	});
 
 	test("a success whose document is missing does not wipe the Σ behind it", () => {
-		// The cache holds the docless result (pi reported success) and extraction declines it, so
-		// Σ is absent rather than an empty document.
+		// A successful docless result is cached but yields no Σ.
 		const docless = JSON.stringify({ version: 7 });
 		const cache = newStateCommitCache();
 		cache.observe(toolResultEvent("c1", committed(4)));
@@ -415,9 +413,8 @@ describe("Σ selection", () => {
 	});
 
 	test("an unreadable branch keeps Σ only while the session id says it is the SAME session", () => {
-		// `session_start` is re-entrant: a reload of this session and a replacement by `/new`,
-		// `/fork` or `/resume` arrive through the same event. Only the session id distinguishes
-		// them, so the cache is kept only when the id matches the session it was built for.
+		// session_start handles reloads and replacements (/new, /fork, /resume). An unreadable
+		// branch retains the cache only when its non-null session id matches.
 		const branchOf = (id: string, toolCallId: string, text: string) => ({
 			sessionManager: { getSessionId: () => id, getBranch: () => [entry(toolResultMessage(toolCallId, text))] },
 		});
@@ -463,8 +460,7 @@ describe("Σ selection", () => {
 			expect(notes.join("")).toMatch(/cleared Σ rather than carry another session's into it/);
 		}
 
-		// No identity ever established (a pi exposing neither API): the cache was filled by live
-		// events alone, and `null === null` must not count as the same session, so it clears.
+		// Live events without an established session identity must clear; null ids do not match.
 		resetStateCommitCache();
 		stateCommitCache().observe(toolResultEvent("live", committed(3)));
 		expect(stateCommitCache().latest()?.toolCallId).toBe("live");
@@ -520,9 +516,7 @@ describe("Σ selection", () => {
 	});
 
 	test("the installed handler feeds the CURRENT cache, not the one bound when it was installed", () => {
-		// installStateCommitCache runs once at extension load; each later `session_start` seed
-		// replaces the binding. The handler must feed the current cache, not the one bound at
-		// install time.
+		// The handler installed before session_start must observe commits in the current binding.
 		const handlers: Array<{ event: string; handler: (event: unknown, ctx: unknown) => unknown }> = [];
 		installStateCommitCache({ on: (event, handler) => handlers.push({ event, handler }) });
 		expect(handlers.map((h) => h.event)).toEqual(["tool_result"]);
@@ -538,9 +532,7 @@ describe("Σ selection", () => {
 	});
 
 	test("the boundary resolves Σ at WRITE time, across a rebinding seed", () => {
-		// An entrypoint installs the boundary at extension load, before the first `session_start`
-		// rebinds the cache. writeBoundary's default supplier is `() => stateCommitCache().latest()`;
-		// this drives it without the `sigma` dep so the supplier must resolve the current binding.
+		// Exercise writeBoundary's default supplier after session_start rebinds the cache.
 		const written: Array<{ messages: unknown[]; options: Record<string, unknown> }> = [];
 		const pi = {
 			on: () => {},
@@ -592,7 +584,7 @@ describe("Σ selection", () => {
 	});
 
 	test("the accessor hands out no way to rebind, reassign or edit — at RUNTIME, not by type", () => {
-		// These are runtime properties, not type-level ones.
+		// Check the frozen view at runtime.
 		const facade = stateCommitCache();
 
 		// The binding's own controls are absent from the view.

@@ -6,12 +6,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseSchema } from "../agentstate/index.js";
 import { defaultSchema } from "./defaultschema.js";
-/** Default schema file location, relative to pi's working directory. Sits in the same
- * `.pi-state/` directory as DEFAULT_STATE_PATH (entrypoint/index.ts). */
+/** Schema path relative to pi's working directory, beside DEFAULT_STATE_PATH. */
 export const DEFAULT_SCHEMA_PATH = ".pi-state/schema.json";
-/** Reads and parses the schema file at `path`. Returns undefined only when the file does
- * not exist; any other read error, and a file that does not parse (parseSchema's error,
- * unchanged), throws. */
+/**
+ * Reads and parses a schema. Returns undefined only for ENOENT; other read errors
+ * and parse errors propagate unchanged.
+ */
 async function readSchemaFile(path) {
     let raw;
     try {

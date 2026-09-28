@@ -42,8 +42,7 @@ function sanitizeValue(path, v) {
             throw err;
         }
     }
-    // A string, a bool, or a null (null inside an object value is a deletion, applied by
-    // mergeObject) — nothing to normalize and nothing that can grow.
+    // Strings, booleans, and null pass through; mergeObject applies null deletions.
     return v;
 }
 function sanitizeObject(path, obj) {
@@ -120,8 +119,7 @@ function mergeValue(key, current, value, field) {
             return mergeObject(cur, sanitized);
         }
         default:
-            // Unreachable: validateSchema ran first. Kept so a kind added without a case
-            // here refuses rather than silently storing an unvalidated value.
+            // Guard against new schema kinds without a validation case here.
             throw new Error(`key ${quote(key)} declares unknown type ${quote(String(field.type))}`);
     }
 }

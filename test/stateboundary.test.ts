@@ -1,16 +1,8 @@
-// Tests for the transcript-boundary delivery of Σ (stateboundary.ts): pairing, the refusal
-// table, and the ordering of pi's branch snapshots around a `state_commit` cycle.
-//
-// `test/testdata/turn-event-ordering/pi-ordering.json` records the events and branch
-// snapshots of a pinned `pi-state` binary around one `state_commit` turn, captured by an
-// external probe script not in this repo. It pins that the branch at `tool_result` is
-// unpaired (the closing tool result is not yet persisted) and the branch at `turn_end` is
-// complete. The recording is portable data (pi's own message shapes). The probe script that
-// regenerates it is not in this repo, so the recording can go stale when the pinned binary
-// is bumped.
-//
-// `installStateBoundary` takes a `StateWindowOptions` object, so the refusal table builds
-// options directly instead of parsing environment-variable strings.
+// Transcript boundary tests: pairing, refusals, and branch snapshots around a commit.
+// `test/testdata/turn-event-ordering/pi-ordering.json` records a pinned pi-state binary.
+// At tool_result the closing result is not persisted; at turn_end the cycle is complete.
+// The capture script is external to this repository. The fixture can become stale
+// when the pinned binary changes. Refusal tests supply StateWindowOptions directly.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
@@ -163,8 +155,7 @@ describe("the pi-native adapter refuses every unpairable shape", () => {
 			want: "a tool result after message 0 answers ghost, which that message did not request",
 			native: [callsMsg("a"), toolRes("a"), toolRes("ghost")],
 		},
-		// The rows below have zero results, so the loops that catch the rows above have nothing to
-		// iterate.
+		// Zero-result cases must also reject unusable call ids.
 		{
 			name: "a call with NO results at all",
 			want: "the tool call a at message 0 has no matching tool result",
@@ -469,7 +460,7 @@ describe("installStateBoundary", () => {
 			says: ["killSwitch", '"maybe"', "1/true/yes/on"],
 		},
 		{
-			// An operator's own `0` is configuration, not a fault (fault=no).
+			// An explicit kill switch has fault=no.
 			what: "the operator set the kill switch off",
 			options: { enabled: true, killSwitch: "0" },
 			condition: "kill-switch",
@@ -526,8 +517,7 @@ describe("installStateBoundary", () => {
 		}
 	});
 
-	// The default sink is `console.error`, which is what puts the report on pi's own
-	// stderr.
+	// The default diagnostic sink is console.error (stderr).
 	test("reports on console.error when the caller supplies no log sink", () => {
 		const pi = fakePi();
 		const lines: string[] = [];
@@ -543,10 +533,9 @@ describe("installStateBoundary", () => {
 	});
 
 	/**
-	 * Event ordering, replayed from the recording. The `tool_result` handler sees an unpaired
-	 * branch and the `turn_end` handler a complete one. Asserts the boundary count after each
-	 * event and then the retained roles: a count alone passes on a collapse to Σ alone, and
-	 * roles alone would not detect a boundary written one event too early.
+	 * Replays event ordering: an unpaired branch at tool_result, a complete one at turn_end.
+	 * Checks boundary counts after each event and retained roles to detect early writes
+	 * and unintended fallback to Σ alone.
 	 */
 	test("plans on turn_end, not tool_result", () => {
 		resetStateCommitCache();
@@ -577,11 +566,8 @@ describe("installStateBoundary", () => {
 	});
 
 	/**
-	 * A `tool_call_id` reused across turns must not arm the boundary. The cache retains the
-	 * previous Σ when a commit is refused, and pi replays a repeated id verbatim (onto failed
-	 * results too), so an id-only comparison against the standing Σ would match.
-	 *
-	 * Driven through the real cache, registered first as an entrypoint does.
+	 * Refused commits and unrelated results reusing an accepted call id must not arm
+	 * a boundary. The real cache is registered first and retains the previous Σ on refusal.
 	 */
 	test("a REUSED tool_call_id does not arm the boundary unless the event is itself an accepted commit", () => {
 		const pi = fakePi();
@@ -623,9 +609,8 @@ describe("installStateBoundary", () => {
 	});
 
 	/**
-	 * An entrypoint registers the Σ cache before the boundary, and the boundary reads
-	 * `stateCommitCache().latest()` expecting the accepted commit to be there. The arming
-	 * predicate compares the event's text against the standing Σ instead of relying on the order.
+	 * The boundary must reject a result whose text differs from the cached Σ,
+	 * including when handlers run in the wrong order.
 	 */
 	test("refuses rather than arming against a stale Σ when the cache handler runs AFTER it", () => {
 		const pi = fakePi();

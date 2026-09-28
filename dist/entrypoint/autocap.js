@@ -22,10 +22,9 @@ function isPositiveFiniteNumber(v) {
     return typeof v === "number" && Number.isFinite(v) && v > 0;
 }
 /**
- * The active model's context window, read from `value.model.contextWindow` — the shape of
- * both a `session_start` `ExtensionContext` and a `model_select` event. `value` is typed
- * `unknown` and read defensively because this package has no `pi` dependency. Returns
- * undefined unless the value is a positive finite number.
+ * Reads value.model.contextWindow from a session_start context or model_select event.
+ * Returns undefined unless it is a positive finite number. Types are structural;
+ * this package has no pi dependency.
  */
 export function contextWindowFromModelHolder(value) {
     if (value === null || typeof value !== "object")
@@ -37,17 +36,10 @@ export function contextWindowFromModelHolder(value) {
     return isPositiveFiniteNumber(contextWindow) ? contextWindow : undefined;
 }
 /**
- * Resolves `schema`'s auto sizing against `contextWindowTokens` and sets
- * `schema.maxStateBytes` in place, so a `Schema` already captured by the tools'
- * `execute` closures sees the new cap on its next call.
- *
- * No-op when `declaredMaxStateBytes` is positive, or when `contextWindowTokens` is
- * undefined (`schemaCap` then returns `DEFAULT_MAX_STATE_BYTES`).
- * `declaredMaxStateBytes` is the schema file's own `maxStateBytes`, captured at load
- * time; it must not be read from `schema.maxStateBytes`, which this function overwrites.
- *
- * Idempotent and safe to call repeatedly (install, `session_start`, `model_select`); it
- * logs only when the resolved byte count changes.
+ * Sets schema.maxStateBytes in place; existing tool closures read the updated cap.
+ * No-op for a positive declaredMaxStateBytes or undefined contextWindowTokens.
+ * declaredMaxStateBytes must be captured at load time, before this function overwrites
+ * schema.maxStateBytes. Repeated calls log only when the resolved cap changes.
  */
 export function applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokens, log) {
     if ((declaredMaxStateBytes ?? 0) > 0)

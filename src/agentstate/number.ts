@@ -42,8 +42,7 @@ function isZeroValue(s: string): boolean {
 	return true;
 }
 
-/** `strconv.Atoi` on the exponent: a value outside int64 range is refused as
- * ErrNumberRange, the same as Go's overflow case. */
+/** Parses an exponent within signed int64 range; throws NumberRangeError on overflow. */
 function parseExponent(raw: string, expPart: string): number {
 	const stripped = expPart.startsWith("+") ? expPart.slice(1) : expPart;
 	let big: bigint;
@@ -90,14 +89,13 @@ function expandDecimal(raw: string): string {
 	const exp = expPart !== "" ? parseExponent(raw, expPart) : 0;
 
 	const digits = intPart + fracPart;
-	// A zero whose shift leaves it no fraction cancels entirely: numeric carries no
-	// magnitude for it and has no negative zero, so `0e65` is one byte canonically.
+	// Zero with no remaining fractional scale canonicalizes to "0", including negative
+	// zero. `0e65` occupies one byte.
 	if (allZeros(digits) && intPart.length + exp >= digits.length) {
 		return "0";
 	}
 
-	// A loose guard so the build below cannot be asked for a gigabyte of zeros; the real
-	// judgement is the canonical length, checked by the caller after the build.
+	// Bound allocation before expansion. The caller checks the final canonical length.
 	const slack = MAX_NUMBER_BYTES + digits.length;
 	if (exp > slack || exp < -slack) {
 		throw new NumberRangeError(

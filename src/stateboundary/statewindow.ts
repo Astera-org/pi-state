@@ -1,29 +1,13 @@
 /**
- * Shared Σ machinery for the state loop. `stateboundary.ts` delivers Σ by replacing pi's
- * transcript; this module defines what Σ is:
- *
- *   - Configuration, parsed fail-closed (resolveStateWindow) from a plain options object. A
- *     malformed value never selects a default and never enables anything: it turns the mode
- *     off. Mapping environment variables to the options object is the caller's concern.
- *   - The `tool_result` cache and its selection of the newest state_commit result pi reported
- *     successful (observeStateCommitResult). Success is pi's `isError`, never derived from
- *     the result text.
- *   - Byte-exact extraction of `doc` and `version` from the result's payload (rawJsonMember
- *     and its scanner). Σ reaches the prompt as sliced bytes, so an arbitrary-precision
- *     version is quoted exactly as committed.
- *   - The preamble sentence Σ is delivered under (stateWindowPreamble).
- *   - The `sproot-state-window` transcript record (STATE_WINDOW_ENTRY_TYPE).
- *
- * `STATE_WINDOW_ENTRY_TYPE` is a persisted format: transcripts on disk and tooling that reads
- * them carry the string `sproot-state-window`.
+ * State-loop configuration, successful-commit caching, exact doc/version extraction,
+ * preamble generation, and transcript records. stateboundary.ts delivers the result.
+ * Malformed configuration disables the mode. Success requires pi's isError=false.
+ * `sproot-state-window` is a persisted record type used by transcript readers.
  */
 
 /**
- * What a caller resolves its environment into before calling this module. No `process.env`
- * read happens in this file, `stateboundary.ts` or `pairing.ts`. The caller decides how its
- * environment spells each option. Fail-closed parsing (the kill switch's asymmetric
- * accept/refuse rule and the cycle count's strict integer grammar) is shared here; the
- * `enabled` gate is resolved by the caller.
+ * Caller-supplied configuration. This module, stateboundary.ts, and pairing.ts read
+ * no environment variables. Kill-switch and cycle-count parsing fail closed.
  */
 export interface StateWindowOptions {
 	/**
@@ -49,9 +33,8 @@ export interface StateWindowOptions {
 export const DEFAULT_TOOL_CYCLES = 4;
 
 /**
- * The ceiling on N. A complete tool cycle is roughly 500–2000 tokens, so 20 cycles is
- * 10–40k tokens; a higher ceiling would allow the unbounded growth this mode exists to
- * remove. Matches the write-boundary ceiling some external callers use.
+ * Maximum trailing cycles. At roughly 500–2000 tokens per cycle, 20 cycles occupy
+ * 10–40k tokens. Some external callers use the same write-boundary ceiling.
  */
 export const MAX_TOOL_CYCLES = 20;
 
@@ -66,13 +49,8 @@ export const MAX_TOOL_CYCLES = 20;
 export const STATE_COMMIT_TOOL_NAMES: readonly string[] = ["state_commit", "mcp__sproot__state_commit"];
 
 /**
- * The members Σ is extracted from in a successful `state_commit` payload: the committed
- * version and the committed document.
- *
- * A payload contract, not a success predicate (success is pi's `isError`, see
- * observeStateCommitResult): a success renders `version` as a JSON number and `doc` as a JSON
- * object. The sliced bytes of both reach the prompt, never a reserialization (see
- * sigmaFromResult).
+ * Payload keys: version is a JSON number and doc a JSON object. Both reach the
+ * prompt as exact sliced bytes. Success is determined separately by pi's isError flag.
  */
 export const STATE_COMMIT_VERSION_KEY = "version";
 export const STATE_COMMIT_DOC_KEY = "doc";
@@ -84,10 +62,8 @@ export const STATE_WINDOW_ENTRY_TYPE = "sproot-state-window";
 const LOG_PREFIX = "pi-state-window";
 
 /**
- * The preamble text placed before Σ's document. It states that earlier turns are absent
- * (a state document with no account of the missing history reads as a corrupted transcript)
- * and names the version so the next `state_commit` has its CAS token; `version` is the
- * payload's raw bytes, quoted exactly as committed.
+ * Preamble stating that earlier turns are absent and providing the next commit's CAS
+ * version. The version is copied from the payload's exact bytes.
  */
 export function stateWindowPreamble(version: string): string {
 	return (
@@ -104,11 +80,9 @@ export interface StateWindowConfig {
 const CYCLES_PATTERN = /^[0-9]+$/;
 
 /**
- * N from configuration. Unset or empty yields DEFAULT_TOOL_CYCLES. Otherwise the value must
- * be a plain base-10 integer within 0..MAX_TOOL_CYCLES; anything else (a negative, a huge
- * number, `4oops`, a value with surrounding whitespace) returns null, which turns the mode
- * off. Values are never clamped or replaced by the default, since either would run the mode
- * at a depth nobody configured.
+ * Parses a base-10 integer in 0..MAX_TOOL_CYCLES. Unset or empty uses
+ * DEFAULT_TOOL_CYCLES. Invalid values, including surrounding whitespace, return null
+ * and disable the mode; values are never clamped.
  */
 export function parseToolCycles(raw: string | undefined): number | null {
 	if (raw === undefined || raw === "") return DEFAULT_TOOL_CYCLES;
@@ -140,9 +114,8 @@ export type StateWindowCondition = "kill-switch" | "mode" | "cycles";
 export interface StateWindowOff {
 	condition: StateWindowCondition;
 	/**
-	 * Whether this is a fault rather than a choice. False only for a recognized negative kill
-	 * switch; an unreadable kill switch, a mode that is not enabled and an unparseable cycle
-	 * count are faults.
+	 * False only for a recognized negative kill switch. Invalid switches, disabled mode,
+	 * and invalid cycle counts are faults.
 	 */
 	fault: boolean;
 	reason: string;
@@ -229,20 +202,12 @@ export interface CachedStateCommit {
 }
 
 /**
- * The newest successful `state_commit` result, or null. Σ is read from it.
+ * Newest successful state_commit result, or null. Success requires tool_result.isError=false;
+ * serialized payload text alone cannot distinguish a retryable stale-version refusal.
+ * The cache is volatile and per-process; the store is authoritative.
  *
- * Success is taken from pi's `tool_result` event `isError` flag. A stale-version CAS refusal
- * (`StaleStateVersionError` in `src/backend`) is an expected, retryable outcome, not a fault,
- * and the serialized tool message carries no error flag, so it cannot be distinguished from
- * a success by its text.
- *
- * Volatile and per-process: rebuilt by the run, never the authority for anything (the store
- * is).
- *
- * A resumed session reloads its transcript but replays no tool execution, so the live event
- * stream alone would leave the cache empty. seedStateCommitCache fills it at `session_start`
- * from the persisted entries: pi persists `isError` on every `toolResult` entry and reloads
- * it verbatim, so the flag remains the only success signal.
+ * Session resume replays no tool execution. seedStateCommitCache restores the cache
+ * at session_start from persisted toolResult entries, including their isError flags.
  */
 interface StateCommitCache {
 	/** Record one `tool_result` event. Anything that is not a proven success is ignored. */
@@ -251,11 +216,8 @@ interface StateCommitCache {
 }
 
 /**
- * What `observe` would store for one `tool_result` event, or null.
- *
- * Every gate fails closed. `isError` is compared to the literal `false`, so an absent flag is
- * not a success. The tool name must be in STATE_COMMIT_TOOL_NAMES (exact match), and the
- * call id must be a non-empty string.
+ * Returns a successful commit result or null. Requires an exact accepted tool name,
+ * literal isError=false, and a non-empty call id. Missing flags refuse.
  */
 export function observeStateCommitResult(event: unknown): CachedStateCommit | null {
 	if (event === null || typeof event !== "object" || Array.isArray(event)) return null;
@@ -281,25 +243,10 @@ export function newStateCommitCache(): StateCommitCache {
 }
 
 /**
- * The process's Σ and the session it belongs to, behind an accessor that always resolves the
- * current binding.
- *
- * Σ is per-conversation, so the cached contents and their session id are one fact. `rebind`
- * takes both and is the only way to change either; `bound.sigma = x` does not typecheck.
- *
- * `observe` and `latest` read the closed-over binding at call time, so a captured reference
- * to the accessor or either method stays correct across rebinding. The inner cache is never
- * handed out.
- *
- * Guarantees:
- *   - A partial update (contents without identity) is a compile error.
- *   - A stale capture is impossible at runtime: every accessor dereferences the current
- *     binding when called.
- *   - Rebinding from outside is impossible at runtime: stateCommitCache() returns a frozen
- *     two-method view. `rebind` and `sessionId` are not properties of it, and its methods
- *     cannot be reassigned.
- *
- * `observe` does not rebind: a live commit adds to the session already identified here.
+ * Session-bound cache. rebind replaces contents and identity together; observe adds
+ * commits to the current session. observe/latest resolve the binding at call time,
+ * including through captured methods. The public frozen view exposes neither the
+ * inner cache nor rebind/sessionId, preventing partial updates and stale captures.
  */
 interface BoundStateCommitCache extends StateCommitCache {
 	/** The session id the contents belong to, or null when never established. */
@@ -311,7 +258,7 @@ interface BoundStateCommitCache extends StateCommitCache {
 function newBoundStateCommitCache(): BoundStateCommitCache {
 	let sigma = newStateCommitCache();
 	let sessionId: string | null = null;
-	// Frozen: the methods close over `sigma`; reassigning one would substitute a reader that never sees a rebinding.
+	// Freeze methods to preserve their reads of the current binding.
 	return Object.freeze({
 		observe: (event: unknown) => sigma.observe(event),
 		latest: () => sigma.latest(),
@@ -323,8 +270,7 @@ function newBoundStateCommitCache(): BoundStateCommitCache {
 	});
 }
 
-// Frozen as a guard against edits inside this file. Not externally reachable
-// (stateCommitCache() returns the view), so not covered by a test.
+// Internal frozen binding; callers receive the frozen view below.
 const bound = newBoundStateCommitCache();
 
 /**
@@ -347,13 +293,9 @@ export function resetStateCommitCache(): void {
 }
 
 /**
- * Seed a cache from a session's entries (the transcript pi just reloaded).
- *
- * Pure over the entry list. A persisted `toolResult` message carries `toolName`,
- * `toolCallId`, `content` and `isError` under the names observeStateCommitResult reads, so
- * each entry's message goes through the same gate as a live event. Replaying the branch in
- * order yields the Σ the live run would have cached. Entries that are not messages, and
- * messages that are not successful state_commit results, are ignored by that gate.
+ * Replays entry messages through the live-result gate in branch order. Persisted
+ * toolResult messages use the same toolName, toolCallId, content, and isError fields.
+ * Malformed entries and unsuccessful results are ignored.
  */
 export function seedStateCommitCacheFromEntries(cache: StateCommitCache, entries: readonly unknown[]): void {
 	for (const entry of entries) {
@@ -368,14 +310,9 @@ interface ToolResultAPI {
 }
 
 /**
- * The entries of the session branch this context is on, or null when this pi exposes no way
- * to read them.
- *
- * `getBranch()` on `ExtensionContext.sessionManager` walks the parent chain from the current
- * leaf over the in-memory index, so it reads no file and does not depend on transcript
- * flushing. It is used instead of `getEntries()` (which includes other branches) and
- * `buildContextEntries()` (compaction-aware; Σ must survive a compaction that dropped its
- * cycle).
+ * Current branch entries, or null when unavailable. getBranch walks the in-memory
+ * parent chain without file I/O or transcript flushing. It excludes other branches
+ * and retains commits removed from context by compaction.
  */
 function sessionBranchEntries(ctx: unknown): readonly unknown[] | null {
 	const manager = sessionManagerOf(ctx);
@@ -397,13 +334,8 @@ function sessionManagerOf(ctx: unknown): Record<string, unknown> | null {
 }
 
 /**
- * This context's session id, or null when it cannot be established.
- *
- * `getSessionId` identifies the conversation Σ belongs to: pi assigns a fresh id for a new
- * session and for a fork, and reads it from the file header on a resume. It therefore
- * differs across replacements that must not share a Σ and holds across a reload of the same
- * session. The file path is not used, since a session moved on disk is the same
- * conversation.
+ * Session id, or null when unavailable. pi assigns a new id on /new and /fork and
+ * restores it from the file header on resume. Moving the file preserves identity.
  */
 function sessionIdentity(ctx: unknown): string | null {
 	const manager = sessionManagerOf(ctx);
@@ -418,22 +350,13 @@ function sessionIdentity(ctx: unknown): string | null {
 }
 
 /**
- * Re-derive the process cache from the session pi has just opened.
+ * Restores the cache on every session_start (/new, /fork, /resume, reload).
+ * SessionManager.open loads entries before session_start. Persisted entries have shape
+ * `{type:"message", message:{role:"toolResult", toolCallId, toolName, content, isError}}`;
+ * isError survives JSON serialization and reload.
  *
- * pi persists a finalized tool call as
- * `{type:"message", message:{role:"toolResult", toolCallId, toolName, content, isError, …}}`
- * (`_persist` writes `JSON.stringify(entry)`; the loader is a bare `JSON.parse` per line),
- * so `isError` is present after a reload.
- *
- * Called on every `session_start`, which is re-entrant (`/new`, `/fork`, `/resume`, reload):
- * a session replacement swaps the transcript, and a Σ cached from the replaced session is not
- * this one's. `SessionManager.open` loads the entries before the runtime that emits
- * `session_start` is built, so they are available here.
- *
- * When the branch cannot be read, retention is tied to identity. A reload of the same session
- * keeps the cache; a replacement must clear it, and both arrive through the same event. The
- * cache is kept only when `getSessionId` matches the session the cache was established for; a
- * different, unreadable or unrecorded id clears.
+ * A readable branch replaces the cache. With an unreadable branch, only a matching
+ * non-null session id retains it; a different, unreadable, or unrecorded id clears it.
  */
 export function seedStateCommitCache(ctx: unknown, log?: (message: string) => void): void {
 	const id = sessionIdentity(ctx);
@@ -450,8 +373,7 @@ export function seedStateCommitCache(ctx: unknown, log?: (message: string) => vo
 		);
 		return;
 	}
-	// The identity is recorded with the clear: it is the session the cache is now empty for, so
-	// a later reload of this session keeps whatever it commits in between.
+	// Record the cleared session's identity so later reloads retain its new commits.
 	bound.rebind(newStateCommitCache(), id);
 	log?.(
 		`[${LOG_PREFIX}] this pi exposes no readable session branch and this session is not the one the cache was built for — cleared Σ rather than carry another session's into it`,
@@ -564,21 +486,12 @@ function scanValue(text: string, i: number): number {
 const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
 
 /**
- * Σ extracted from a cached successful `state_commit` result, or null when the payload cannot
- * be carried.
+ * Extracts Σ from a successful cached result. Returns null unless version is a JSON
+ * number and doc starts with an object. Checks use sliced bytes without parsing the payload.
  *
- * Success was already decided by pi (`isError === false`). Extraction fails closed: null when
- * `version` does not slice out as a JSON number or `doc` does not slice out as a JSON object
- * (a drift from the `state_commit` result shape produced by `stateCommitTool` in
- * `src/entrypoint/index.ts`). Both checks run on the sliced bytes, without parsing the whole
- * payload.
- *
- * The prompt receives the raw bytes of `doc` and `version`, never a reserialization: the
- * `agentstate` core preserves arbitrary-precision numbers (`JsonNumber`) and caps the
- * document's exact canonical bytes, and a JavaScript round trip changes both (`JSON.parse`
- * turns `9999999999999999` into `10000000000000000`, and a re-serialized document can exceed
- * the byte cap it was measured against). `version` as a number is used only for
- * the transcript record (StateWindowEntryData.stateVersion); the prompt gets `versionText`.
+ * The prompt receives exact doc/version bytes. JSON.parse rounds 9999999999999999 to
+ * 10000000000000000; reserialization can exceed the measured canonical byte cap.
+ * Numeric version is for StateWindowEntryData only; the prompt uses versionText.
  */
 export function sigmaFromResult(cached: CachedStateCommit | null): Sigma | null {
 	if (cached === null) return null;
@@ -621,11 +534,8 @@ export interface StateWindowEntryData {
 }
 
 /**
- * The running tally stamped on every entry, success or refusal. Each entry carries totals,
- * not a delta, so a run that refuses every turn is distinguishable from a healthy one
- * from a single entry.
- *
- * Counters are per-process and reset on restart; they are never authoritative.
+ * Per-process cumulative totals on every success or refusal entry. Reset on restart;
+ * not authoritative.
  */
 export interface StateWindowTally {
 	/** Boundary attempts since install. */
@@ -636,10 +546,7 @@ export interface StateWindowTally {
 
 type StateWindowEntry = StateWindowEntryData & StateWindowTally;
 
-/**
- * The marker appended instead of a record when the mode was on and the boundary could not
- * be produced. It distinguishes "attempted and failed" from "not attempted".
- */
+/** Failure record for an enabled mode that could not produce a boundary. */
 export type StateWindowFailure = { failed: true; reason: string } & StateWindowTally;
 
 /** Σ, ready for the prompt: the raw bytes plus the result that carried them. */

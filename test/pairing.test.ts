@@ -41,7 +41,7 @@ describe("the shared pairing core", () => {
 		["a result before any call", [result("a")], { code: "stray-result", at: 0 }],
 		["a result carrying no id", [calls("a"), result("")], { code: "result-without-id", at: 1 }],
 		["an id answered twice", [calls("a", "b"), result("a"), result("a")], { code: "answered-twice", at: 2, id: "a" }],
-		// Three calls, one result: a check on "at least one result followed" would accept this.
+		// Three calls with only one result must refuse.
 		[
 			"a call left unanswered in a multi-call cycle",
 			[calls("a", "b", "c"), result("a")],
@@ -52,8 +52,7 @@ describe("the shared pairing core", () => {
 			[calls("a"), result("a"), result("ghost")],
 			{ code: "unrequested-result", at: 0, id: "ghost" },
 		],
-		// An unreadable call id with no results after it: reported as an empty list, the arity
-		// loop would have nothing to iterate and the cycle would pass.
+		// An unreadable call id must refuse even with zero results.
 		["an id-less call with no results", [{ c: "unverifiable" as const }], { code: "unverifiable-call", at: 0 }],
 		[
 			"an id-less call WITH results",
@@ -65,7 +64,7 @@ describe("the shared pairing core", () => {
 		expect(refuse(spec)).toEqual(want);
 	});
 
-	// Guards against a core that refuses everything.
+	// Complete cycles are accepted.
 	test("accepts a well-formed multi-call cycle, and reports its span", () => {
 		expect(accept([calls("a", "b"), result("a"), result("b")])).toEqual([{ start: 0, end: 2 }]);
 	});
