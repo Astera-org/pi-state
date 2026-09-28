@@ -14,9 +14,59 @@ bounds the prompt on its own — no other service, database, or account is requi
 pi install git:github.com/Astera-org/pi-state
 ```
 
-(or `pi install ./pi-state` from a local checkout, or `pi -e git:github.com/Astera-org/pi-state`
+(or `pi install ./pi-state` from a local checkout, `pi install <source> -l` to install
+project-locally instead of into your global settings, or `pi -e git:github.com/Astera-org/pi-state`
 to try it for one invocation without persisting the install — see `pi`'s own package
 documentation for the full set of install sources and flags).
+
+## Run it standalone
+
+No server, database, or MCP connection required: two files under `.pi-state/` (a schema
+and Σ itself) and two local tools (`state_get`, `state_commit`) are the whole footprint.
+
+`pi-state` needs a `pi` build that exposes the extension API `pi.replaceTranscript` —
+this is how it bounds the prompt (see `src/entrypoint` below). Get a `pi` binary from
+`pi`'s own install docs:
+
+```bash
+curl -fsSL https://pi.dev/install.sh | sh
+# or
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+```
+
+Whether the version you get has `replaceTranscript` isn't guaranteed by the version
+number alone — as of `@earendil-works/pi-coding-agent@0.87.1`, the published npm package
+doesn't carry it anywhere in its `dist/`. Verify your own `pi` before relying on it:
+
+```bash
+grep -rl replaceTranscript "$(dirname "$(readlink -f "$(which pi)")")"
+```
+
+If nothing matches, get a `pi` build that includes the feature (a recent checkout built
+locally, for example) — `pi-state` otherwise refuses to install rather than silently
+running a loop that can never take effect (see "Configure" below for the analogous
+missing-schema refusal).
+
+With a schema in place (below) and `pi-state` installed, just run `pi` in a project
+containing `.pi-state/schema.json`. Ask the agent to call `state_get` to confirm the
+tools are registered — its result carries the declared keys, their types, and the
+current byte cap even before anything has been committed:
+
+```json
+{"ok":true,"version":0,"doc":{},"exists":false,"note":"no state yet — commit with version 0 to create it","declaredKeys":["objective","step"],"declaredTypes":{"objective":"string","step":"number"},"maxStateBytes":4096}
+```
+
+Then have it call `state_commit` with `version: 0` and a patch, e.g.
+`{"objective": "set up pi-state", "step": 1}` — a successful result returns the merged
+document at `version: 1`.
+
+To confirm the prompt actually bounds, watch per-request token usage in `--mode json`
+(the `usage` field on `message_update`/`message_end`): before any `state_commit`, input
+tokens grow with the conversation as usual; after one is accepted, later turns' usage
+stops tracking the conversation's length, no matter how long the session runs.
+
+To smoke-test a local checkout of `pi-state` without installing it first, point `-e`
+straight at the built entrypoint: `pi -e /path/to/pi-state/dist/entrypoint/index.js`.
 
 ## Configure
 
@@ -36,21 +86,26 @@ agent's state may hold —
 ```
 
 — in the grammar `agentstate.parseSchema` accepts (documented in full under
-`src/agentstate` below: five kinds, a closed key set, an optional per-key `desc`, and a
-byte cap on the merged document). `maxStateBytes` is optional — omit it and the cap is
-sized automatically instead of defaulting to a fixed number; see "Auto sizing" under
-`src/entrypoint` below. A schema with no keys is valid but refuses every
-non-empty patch, so a missing or empty file is not a usable default — installation fails
-loudly, with an actionable message, rather than silently registering a `state_commit`
-that can never succeed.
+`src/agentstate` below): a closed key set, each key exactly one of five kinds, an
+optional per-key `desc` (capped at 160 bytes — it ships in the system prompt of every
+request, so keep it to a clause), and a byte cap on the merged document.
+`maxStateBytes` is optional — omit it and the cap is sized automatically instead of
+defaulting to a fixed number; see "Auto sizing" under `src/entrypoint` below.
 
-With a schema in place, just run `pi` as you normally would. The agent calls
-`state_get`/`state_commit` to read and update Σ, and after any turn that commits at
-least one patch, `pi-state` replaces `pi`'s transcript with `[Σ, the newest user turn,
-the last few trailing tool cycles]` instead of full history — see `src/entrypoint` and
-`src/stateboundary` below for exactly what that replacement contains and why. No
-environment variables are required for this; see **Environment variables** under
-`src/entrypoint` to tune or disable it.
+A schema with no keys is valid but refuses every non-empty patch, so a missing or empty
+file is not a usable default — installation fails loudly instead of silently registering
+a `state_commit` that can never succeed:
+
+```
+[pi-state] no schema file at .pi-state/schema.json — declare your agent's Σ shape there (the JSON grammar agentstate.parseSchema accepts: {"keys":{...},"maxStateBytes":N}) before pi-state can register state_commit
+```
+
+The agent calls `state_get`/`state_commit` to read and update Σ, and after any turn that
+commits at least one patch, `pi-state` replaces `pi`'s transcript with `[Σ, the newest
+user turn, the last few trailing tool cycles]` instead of full history — see
+`src/entrypoint` and `src/stateboundary` below for exactly what that replacement
+contains and why. No environment variables are required for this; see **Environment
+variables** under `src/entrypoint` to tune or disable it.
 
 ## `src/agentstate`
 
