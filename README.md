@@ -6,7 +6,7 @@ document (Sigma, `Σ`) instead of full history, once Sigma is committed via a
 `state_commit`-style tool call.
 
 This package is a self-contained `pi` extension: install it, declare a schema, and it
-bounds the prompt on its own — no other service, database, or account is required.
+bounds the prompt on its own.
 
 ## Install
 
@@ -21,8 +21,8 @@ documentation for the full set of install sources and flags).
 
 ## Run it standalone
 
-No server, database, or MCP connection required: two files under `.pi-state/` (a schema
-and Σ itself) and two local tools (`state_get`, `state_commit`) are the whole footprint.
+The whole footprint is two files under `.pi-state/` (a schema and Σ itself) and two
+local tools (`state_get`, `state_commit`).
 
 `pi-state` needs a `pi` build that exposes the extension API `pi.replaceTranscript` —
 this is how it bounds the prompt (see `src/entrypoint` below). Get a `pi` binary from
@@ -170,21 +170,20 @@ The first commit against a missing file must name version 0.
 ## `src/entrypoint`
 
 The actual pi extension — the piece that makes this package a runnable, standalone
-extension with no external database and no MCP round trip. `installPiState` (the
-module's default export, so `package.json`'s `"pi": {"extensions": [...]}` field can load
-it directly):
+extension. `installPiState` (the module's default export, so `package.json`'s
+`"pi": {"extensions": [...]}` field can load it directly):
 
 - registers `state_get` and `state_commit` as **local** pi tools (`pi.registerTool`,
-  bare names — no `mcp__...`-style prefix, since there is no MCP server here to prefix a
-  name after) backed by `src/backend`'s file backend;
+  under their bare names) backed by `src/backend`'s file backend;
 - generates `state_commit`'s input JSON Schema from the loaded schema file
   (`src/entrypoint/patchschema.ts`): one property per declared key, each unioned with
   `null` (a null value is how a patch deletes a key), and `additionalProperties: false`
   for the closed key set;
 - installs the transcript boundary (`src/stateboundary`'s `installStateBoundary`),
-  configured from this repo's own environment variables (below);
-- does **not** call MCP `connect()`, write a receipt file, or register a provider — this
-  entrypoint only registers the two local tools and the transcript boundary, by design.
+  configured from this repo's own environment variables (below).
+
+That's the entrypoint's entire job: register the two local tools and the transcript
+boundary.
 
 **File layout.** Two files, both under one directory (`.pi-state/`) so a user can
 `.gitignore` or inspect this extension's whole footprint as a unit, relative to pi's
