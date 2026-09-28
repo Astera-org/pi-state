@@ -1,9 +1,4 @@
-// The Schema model, parseSchema, parsePatch, and the canonical
-// marshal/unmarshal/canonicalize/size primitives that define an agent's durable working
-// state (Sigma).
-//
-// Naming: functions are `camelCase` (`parseSchema`, `merge`, ...); types are `PascalCase`
-// (`Schema`, `Field`, `Kind`).
+// Schema parsing, patch parsing, and canonical document serialization and sizing.
 
 import { AgentStateSchemaError, MalformedPatchError } from "./errors.js";
 import {
@@ -24,9 +19,10 @@ function decodeNumberMember(value: DocValue): number {
 	return value instanceof JsonNumber ? Number(value.raw) : Number.NaN;
 }
 
-/** The cap applied when a schema declares no maxStateBytes and auto sizing has not
- * resolved one. 4 KiB is small enough to resend in full on every request while holding a
- * useful handful of structured fields. */
+/**
+ * Fallback cap when no explicit or auto-sized cap is available: 4 KiB for a small
+ * set of structured fields resent on every request.
+ */
 export const DEFAULT_MAX_STATE_BYTES = 4096;
 
 /** The percent auto sizing uses when a schema declares neither maxStateBytes nor
@@ -39,15 +35,10 @@ export const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 65;
 export const DEFAULT_BYTES_PER_TOKEN = 4;
 
 /**
- * Resolves percent-of-context-window sizing into a byte count:
- * `floor(contextWindowTokens * bytesPerToken * percent / 100)`.
- *
- * `agentstate` has no knowledge of the running model, so the caller (`src/entrypoint`)
- * supplies the context window and substitutes the result into a Schema's `maxStateBytes`
- * before merge or cap enforcement (see schemaCap, merge.ts). `percent` has no default
- * here; pass DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT when the schema's
- * `autoMaxStateBytesPercent` is absent. Throws unless `percent` is in (0, 100] and
- * `contextWindowTokens` and `bytesPerToken` are positive.
+ * Returns `floor(contextWindowTokens * bytesPerToken * percent / 100)`.
+ * The caller sets Schema.maxStateBytes before cap enforcement and supplies
+ * DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT when the schema omits a percentage.
+ * Throws unless percent is in (0, 100] and the other arguments are positive.
  */
 export function resolveAutoMaxStateBytes(
 	percent: number,
@@ -123,14 +114,12 @@ export function declaredKeys(schema: Schema): string[] {
 	return Object.keys(schema.keys).sort();
 }
 
-/** One field's declared type in the compact spelling the state tool surface publishes:
- * the kind, with a list's maxItems in brackets — `list[8]`, not `{"type":"list",...}`. */
+/** The kind, with a list's maxItems in brackets, e.g. `list[8]`. */
 export function fieldSpec(field: Field): string {
 	return field.type === Kind.List ? `${field.type}[${field.maxItems}]` : field.type;
 }
 
-/** Every declared key's spec, keyed by name — what an agent needs to write a patch that
- * validates on the first try. */
+/** Each declared key's type specification, keyed by name. */
 export function declaredTypes(schema: Schema): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const name of declaredKeys(schema)) out[name] = fieldSpec(schema.keys[name]);
@@ -283,9 +272,10 @@ function decodeSchema(value: DocValue): Schema {
 	return schema;
 }
 
-/** Reads an operator-authored schema document. An unknown JSON field is an error rather
- * than an ignored typo. Empty (or whitespace-only) input parses to the zero schema, which
- * declares nothing and therefore refuses every non-empty patch. */
+/**
+ * Parses and validates a schema, rejecting unknown JSON fields. Empty or whitespace-only
+ * input declares no keys and refuses every non-empty patch.
+ */
 export function parseSchema(raw: string): Schema {
 	if (raw.trim() === "") return { keys: {} };
 	const value = parseJsonDocument(raw);
@@ -321,7 +311,7 @@ export function marshal(doc: DocObject | null | undefined): string {
 	return marshalValue(doc ?? {});
 }
 
-/** The canonical JSON size of a document — the number the byte cap is about. */
+/** The canonical JSON size in UTF-8 bytes, used for cap enforcement. */
 export function size(doc: DocObject): number {
 	return byteLength(marshal(doc));
 }

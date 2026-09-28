@@ -78,13 +78,8 @@ export interface PiStateOptions {
 	log?: (message: string) => void;
 }
 
-// --- patch conversion ---------------------------------------------------------------
-//
-// pi coerces a tool call's arguments against the advertised JSON Schema before `execute`
-// runs, so the patch arrives as an already-parsed JS value: a JS `number`, not the exact
-// source digits `agentstate`'s parser keeps. Arbitrary-precision numbers therefore lose
-// precision before this code sees them, and a number is stored as `String(v)` of the
-// parsed value. See the README.
+// pi coerces arguments before execute. Patch numbers arrive as JS numbers and are
+// stored as String(v); arbitrary-precision digits may already be lost. See README.
 
 function toDocValue(v: unknown): DocValue {
 	if (v === null) return null;

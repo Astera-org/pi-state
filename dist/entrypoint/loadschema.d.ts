@@ -1,6 +1,5 @@
 import { type Schema } from "../agentstate/index.js";
-/** Default schema file location, relative to pi's working directory. Sits in the same
- * `.pi-state/` directory as DEFAULT_STATE_PATH (entrypoint/index.ts). */
+/** Schema path relative to pi's working directory, beside DEFAULT_STATE_PATH. */
 export declare const DEFAULT_SCHEMA_PATH = ".pi-state/schema.json";
 export interface ResolveSchemaOptions {
     /** An explicit schema file. When set, it is the only source consulted. */

@@ -1,28 +1,14 @@
 /**
- * Tool-cycle pairing rule, independent of message shape.
+ * Message-shape-independent tool-cycle pairing. Each call must have exactly one result,
+ * each result must name a requested call, and all ids must be usable. Unmatched ids
+ * cause provider 400 responses.
  *
- * A bounded prompt is cut on cycle boundaries, and a cycle may only be cut out if it is
- * fully paired: every call the assistant made is answered exactly once, no result answers a
- * call that was not requested, and every result carries an id. An unmatched `tool_call_id`
- * in the outgoing messages is a provider 400.
- *
- * The caller is `stateboundary.ts`, over pi's native message shape. The rule lives in its own
- * file so `pairing.test.ts` can exercise it through a synthetic shape (`c` makes calls, `r`
- * answers one) without a shape adapter. That test pins two failure modes: accepting a cycle
- * because at least one result followed, and accepting an id-less call with zero results.
- *
- * A refusal is a code, not a sentence: each caller renders it in its own vocabulary
- * (`toolCallId` for pi's field name). The rendered text is a stable format once written to
- * pi's transcript: existing tooling asserts specific wording verbatim.
+ * stateboundary.ts adapts pi messages and renders refusal codes. Refusal text persisted
+ * in transcripts is a stable format checked verbatim by external tooling.
  */
 /**
- * Segment a run of messages into complete tool cycles, refusing anything not fully paired.
- *
- * Matching is on the id set: an assistant message can carry N calls, and every one must be
- * answered by exactly one result.
- *
- * A refusal is not an error. It means a paired window cannot be proven cuttable from these
- * messages; the caller falls back to a form that needs no pairing.
+ * Segments messages into cycles with exactly one result per requested call id.
+ * Returns a refusal when pairing fails; callers can fall back to Σ alone.
  */
 export function pairCycles(shape) {
     const cycles = [];

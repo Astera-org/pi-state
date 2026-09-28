@@ -1,31 +1,14 @@
 /**
- * Delivers Σ through pi's transcript boundary.
+ * Replaces pi's transcript once per turn with an accepted commit: newest Σ, newest user
+ * turn, and trailing tool cycles. statewindow.ts supplies the cache, extraction, and config.
  *
- * What Σ is lives in `statewindow.ts` and is imported from it: the `tool_result` cache and
- * its `isError` selection, the escape-aware extraction of `doc`/`version` from the payload
- * bytes, the preamble sentence, fail-closed configuration parsing, and the
- * `sproot-state-window` transcript record (STATE_WINDOW_ENTRY_TYPE). This module handles
- * delivery: one `pi.replaceTranscript([Σ, O, N])` per turn that accepted at least one commit,
- * carrying the newest Σ.
+ * Boundaries survive reload and branch navigation and are included in pi's context
+ * accounting. The session file continues to grow.
  *
- * A boundary is a session entry pi constructs context from, so the bound survives reload and
- * branch navigation and is what pi's accounting measures. The session file still grows: a
- * boundary bounds what the model sees, not what is stored.
- *
- * Properties of the design:
- *
- *   - No preamble message is emitted. pi rebuilds the system message from its own options when
- *     the transcript carries none (`getCurrentSystemMessage` returns undefined, so
- *     `diffSystemPromptSections` emits the full set), so a role policy delivered with
- *     `--append-system-prompt` is still sent after the boundary.
- *   - Kept messages are pi's own message objects, taken verbatim from the session, so a kept
- *     cycle is already paired. pi never applies a replacement between a tool call and its
- *     result.
- *   - Σ is written, not located in an existing body.
- *
- * Failure mode: a replacement pi cannot send leaves the agent unable to take a turn, so every
- * path that cannot produce a well-formed trailing window falls back to Σ alone, which needs
- * no pairing, and records the reason.
+ * No system message is emitted: pi rebuilds it, including --append-system-prompt policy.
+ * Retained messages preserve object identity and tool pairing. pi applies replacements
+ * only between complete cycles. An invalid trailing window falls back to Σ alone and
+ * records the reason; an unsendable replacement prevents further turns.
  */
 
 import { type PairingRefusal, type PairingShape, pairCycles } from "./pairing.js";
@@ -77,12 +60,8 @@ interface PiEntry {
 const BOUNDARY_ENTRY_TYPES = new Set(["transcript", "compaction"]);
 
 /**
- * The messages pi currently constructs context from, in order: everything after the last
- * boundary entry on this branch.
- *
- * System messages are dropped: pi replays every system message it finds into one leading
- * system message and diffs it against the wanted prompt, so dropping them makes pi re-emit
- * the current prompt, role policy included.
+ * Messages after the last context boundary on this branch, in order. System messages
+ * are omitted to trigger pi's full prompt reconstruction, including role policy.
  */
 export function heldMessages(entries: readonly unknown[]): PiMessage[] {
 	let start = 0;
@@ -112,14 +91,9 @@ interface Cycle {
 }
 
 /**
- * The tool-call ids an assistant message asked for, in order, or null when it asked for none.
- *
- * pi's `AssistantMessage.content` is `(TextContent | ThinkingContent | ToolCall)[]` and
- * `ToolCall` carries its own `id`, so one assistant message can hold N calls (parallel
- * calls), each answered by its own `toolResult` message bearing a matching `toolCallId`.
- *
- * A call with no usable id returns `"unverifiable"`, not null: the caller must refuse rather
- * than treat the message as call-free.
+ * Call ids from an assistant's ToolCall content blocks, in order; null for no calls.
+ * Each parallel call requires a toolResult with a matching toolCallId.
+ * Returns "unverifiable" if any call lacks a usable id.
  */
 function toolCallIdsOf(message: PiMessage): string[] | "unverifiable" | null {
 	if (message.role !== "assistant" || !Array.isArray(message.content)) return null;
@@ -135,8 +109,7 @@ function toolCallIdsOf(message: PiMessage): string[] | "unverifiable" | null {
 		else missing = true;
 	}
 	if (!sawCall) return null;
-	// Signalled in the return value: a short id list would pass the zero-results case through
-	// pairCycles (no ids to iterate, arity check reduced to `0 !== 0`).
+	// Missing ids must refuse even when there are zero results to check.
 	if (missing) return "unverifiable";
 	return ids;
 }
@@ -173,13 +146,8 @@ function nativeReason(r: PairingRefusal): string {
 }
 
 /**
- * Segment the held messages into complete tool cycles, refusing anything not fully paired.
- *
- * Adapts pi's message shape to `pairCycles` and renders refusals as `{ reason }`. The
- * `"unverifiable"` judgement (a call content block with no usable id) is made in
- * `toolCallIdsOf`.
- *
- * A refusal is not an error: the caller keeps Σ alone, which needs no pairing.
+ * Adapts pi messages to pairCycles and returns complete cycles or a refusal reason.
+ * Unusable call ids refuse pairing; the caller falls back to Σ alone.
  */
 export function segmentCycles(messages: readonly PiMessage[]): { cycles: Cycle[] } | { reason: string } {
 	const paired = pairCycles(nativeShape(messages));
@@ -188,16 +156,9 @@ export function segmentCycles(messages: readonly PiMessage[]): { cycles: Cycle[]
 }
 
 /**
- * Σ as a single user message: the preamble sentence followed by the committed document's
- * exact bytes.
- *
- * `content` is a plain string, so `doc` and `version` reach the prompt as the exact sliced
- * bytes; a JavaScript parse/serialize round trip would lose arbitrary-precision numbers and
- * the canonical byte form. pi's `UserMessage.content` is
- * `string | (TextContent | ImageContent)[]`, and nothing between here and the provider
- * parses it.
- *
- * `timestamp` is supplied by the caller, which keeps this function pure.
+ * Σ as a user message containing the preamble and exact committed bytes.
+ * String content reaches the provider without parsing, preserving number precision
+ * and canonical byte size. The caller supplies the timestamp.
  */
 export function sigmaMessage(sigma: Sigma, timestamp: number): PiMessage {
 	return {
@@ -221,13 +182,8 @@ export interface BoundaryPlan {
 }
 
 /**
- * The replacement for one accepted commit: Σ, then the newest user turn (O), then the last N
- * complete tool cycles that trail it.
- *
- * Σ comes first because it is the oldest content in the new transcript, and a user message
- * preceding the turn it precedes is an ordering every provider accepts. Messages are pi's
- * own objects, passed by reference and never rebuilt, so kept cycles stay paired and no
- * message field is lost.
+ * Replacement order: Σ, newest user turn (O), then its last N complete tool cycles.
+ * Retained pi message objects preserve every field and tool pairing.
  */
 export function boundaryMessages(
 	sigma: Sigma,
@@ -264,8 +220,7 @@ export function boundaryMessages(
 	if (o !== -1) kept.push(held[o]!);
 	for (let i = keepFrom; i < held.length; i++) kept.push(held[i]!);
 
-	// The cut lands on a cycle start, so the kept run cannot open on a tool result whose call
-	// was cut away; checked anyway because that would be a provider 400.
+	// Guard against a leading tool result without its call, which causes a provider 400.
 	const opener = kept.find((m) => m !== held[o]);
 	if (opener !== undefined && opener.role === "toolResult") {
 		return alone("the trailing window would open on a tool result whose call was cut away");
@@ -359,10 +314,8 @@ export function writeBoundary(
 		pi.replaceTranscript(plan.messages, {
 			reason: `state loop: bounded to Σ v${sigma.versionText}`,
 			source: STATE_BOUNDARY_SOURCE,
-			// "steer" applies the replacement at the end of the current turn, before the next LLM
-			// call. "followUp" waits for the run to settle, letting another turn go out on the
-			// unbounded transcript; "nextTurn" waits for a prompt a self-driving agent may never
-			// receive.
+			// Apply at the end of this turn, before the next LLM call. "followUp" permits
+			// another unbounded turn; "nextTurn" requires another prompt.
 			deliverAs: "steer",
 		});
 	} catch (err) {
@@ -378,9 +331,7 @@ export function writeBoundary(
 		droppedMessages: plan.dropped.messages,
 		droppedCycles: plan.dropped.cycles,
 		...(Object.keys(plan.dropped.roles).length === 0 ? {} : { droppedRoles: plan.dropped.roles }),
-		// Always `rehomed`: the window states describe where Σ sat in an outgoing request body.
-		// `in-window` would claim a body position that no longer exists, and the no-Σ states
-		// are unreachable because a null Σ has already returned.
+		// Σ is emitted from the cache. A null Σ returns before recording.
 		state: "rehomed",
 		stateVersion: sigma.version,
 		...tally,
@@ -391,13 +342,8 @@ export function writeBoundary(
 export const STATE_BOUNDARY_SOURCE = "pi-state-loop";
 
 /**
- * The install-time report for an off configuration.
- *
- * `resolveStateWindow` refuses on three conditions; this message names which one applied.
- *
- * The bracket is a wire format: `[condition=… fault=…]` is machine-parseable from stderr. The
- * lead words are for humans and are not parsed. `fault` distinguishes a defect from an
- * operator-set kill switch (a negative control arm sets it on purpose).
+ * Install-time refusal report. `[condition=… fault=…]` is parsed from stderr;
+ * the leading text is for display. fault=false identifies an operator-set kill switch.
  */
 export function stateBoundaryNotInstalled(off: StateWindowOff): string {
 	const lead = off.fault ? "state loop NOT INSTALLED" : "state loop off by operator configuration";
@@ -419,26 +365,14 @@ function sessionBranchEntries(ctx: unknown): readonly unknown[] | null {
 }
 
 /**
- * Register the boundary on pi's `tool_result` and `turn_end` events.
+ * Registers tool_result to capture an accepted commit and turn_end to write its boundary.
+ * The branch at tool_result lacks the result; at turn_end the cycle is complete.
+ * Planning earlier would fail pairing and retain only Σ. The ordering fixture is
+ * `test/testdata/turn-event-ordering`.
  *
- * `tool_result` notices an accepted commit (pi's `isError` is available only there), but at
- * that moment pi has not persisted the result:
- *
- *   tool_result  […, user, assistant(toolCall:X)]
- *   turn_end     […, user, assistant(toolCall:X), toolResult(X)]
- *
- * Planning at `tool_result` would read a branch whose last cycle is unpaired, so
- * `segmentCycles` would refuse it and every commit would fall back to Σ alone. Therefore
- * `tool_result` arms and `turn_end` plans, when the branch is complete. A test fixture whose
- * `getBranch` already contains the finished cycle does not exercise this ordering; the
- * recording in `test/testdata/turn-event-ordering` does.
- *
- * Invariant: one boundary per turn that accepted at least one commit, carrying the newest Σ.
- * Parallel `state_commit` calls in one assistant message produce two `toolResult`s and one
- * `turn_end`; Σ is CAS-versioned, so the later commit supersedes the earlier. A turn that
- * committed nothing writes nothing.
- *
- * An off configuration logs its condition (see stateBoundaryNotInstalled).
+ * Writes one boundary per turn with an accepted commit, carrying the newest Σ. Parallel
+ * commits share one turn_end; turns without commits write nothing. Off configurations
+ * log their condition.
  */
 export function installStateBoundary(
 	pi: BoundaryAPI,
@@ -487,22 +421,11 @@ export function installStateBoundary(
 }
 
 /**
- * Whether this `tool_result` event is an accepted `state_commit` whose result is the Σ now
- * in the cache.
- *
- * The id alone is insufficient: `tool_call_id` is not unique across turns (pi replays a
- * repeated one verbatim, onto failed results too), and the cache retains the previous Σ when
- * a commit is refused. A later result reusing the id of an accepted commit, whether a refused
- * commit or an unrelated successful `read`, would otherwise match the standing Σ.
- *
- * The event is therefore first put through `observeStateCommitResult` (exact tool name,
- * literal `isError === false`, usable id), then compared on id and text. Text equality holds
- * when the cache handler runs before this one; if that ordering breaks, the texts differ and
- * no boundary is written.
- *
- * The tool name is not compared again: `observeStateCommitResult` has already restricted it
- * to the accepted set, and a second comparison would reject the same commit cached under a
- * different accepted spelling (`state_commit` vs the `mcp__sproot__` form).
+ * True for an accepted state_commit whose id and text match the cached Σ.
+ * Call ids can repeat across turns and on failed or unrelated results. The event must
+ * pass observeStateCommitResult, then match both id and text. Matching text requires
+ * the cache handler to have observed this result before the boundary handler.
+ * Accepted tool-name aliases are interchangeable.
  */
 function answeredBy(event: unknown, sigma: CachedStateCommit): boolean {
 	const observed = observeStateCommitResult(event);

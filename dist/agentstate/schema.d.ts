@@ -1,7 +1,8 @@
 import { type DocObject } from "./json.js";
-/** The cap applied when a schema declares no maxStateBytes and auto sizing has not
- * resolved one. 4 KiB is small enough to resend in full on every request while holding a
- * useful handful of structured fields. */
+/**
+ * Fallback cap when no explicit or auto-sized cap is available: 4 KiB for a small
+ * set of structured fields resent on every request.
+ */
 export declare const DEFAULT_MAX_STATE_BYTES = 4096;
 /** The percent auto sizing uses when a schema declares neither maxStateBytes nor
  * `autoMaxStateBytesPercent`. */
@@ -11,15 +12,10 @@ export declare const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 65;
  * content. */
 export declare const DEFAULT_BYTES_PER_TOKEN = 4;
 /**
- * Resolves percent-of-context-window sizing into a byte count:
- * `floor(contextWindowTokens * bytesPerToken * percent / 100)`.
- *
- * `agentstate` has no knowledge of the running model, so the caller (`src/entrypoint`)
- * supplies the context window and substitutes the result into a Schema's `maxStateBytes`
- * before merge or cap enforcement (see schemaCap, merge.ts). `percent` has no default
- * here; pass DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT when the schema's
- * `autoMaxStateBytesPercent` is absent. Throws unless `percent` is in (0, 100] and
- * `contextWindowTokens` and `bytesPerToken` are positive.
+ * Returns `floor(contextWindowTokens * bytesPerToken * percent / 100)`.
+ * The caller sets Schema.maxStateBytes before cap enforcement and supplies
+ * DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT when the schema omits a percentage.
+ * Throws unless percent is in (0, 100] and the other arguments are positive.
  */
 export declare function resolveAutoMaxStateBytes(percent: number, contextWindowTokens: number, bytesPerToken?: number): number;
 /** Bounds one key's `desc`, in bytes. */
@@ -69,11 +65,9 @@ export interface Schema {
 export declare function schemaCap(schema: Schema): number;
 /** The declared key names, sorted. */
 export declare function declaredKeys(schema: Schema): string[];
-/** One field's declared type in the compact spelling the state tool surface publishes:
- * the kind, with a list's maxItems in brackets — `list[8]`, not `{"type":"list",...}`. */
+/** The kind, with a list's maxItems in brackets, e.g. `list[8]`. */
 export declare function fieldSpec(field: Field): string;
-/** Every declared key's spec, keyed by name — what an agent needs to write a patch that
- * validates on the first try. */
+/** Each declared key's type specification, keyed by name. */
 export declare function declaredTypes(schema: Schema): Record<string, string>;
 /** The whole declared key set as sorted `name type` pairs — the form a refusal quotes back. */
 export declare function declaredSummary(schema: Schema): string;
@@ -85,9 +79,10 @@ export declare function declaredGuide(schema: Schema): string;
  * negative, `autoMaxStateBytesPercent` within 1-100, non-empty key names, `desc` within
  * MAX_DESC_BYTES, a known type per key, and `maxItems` present on lists only. */
 export declare function validateSchema(schema: Schema): void;
-/** Reads an operator-authored schema document. An unknown JSON field is an error rather
- * than an ignored typo. Empty (or whitespace-only) input parses to the zero schema, which
- * declares nothing and therefore refuses every non-empty patch. */
+/**
+ * Parses and validates a schema, rejecting unknown JSON fields. Empty or whitespace-only
+ * input declares no keys and refuses every non-empty patch.
+ */
 export declare function parseSchema(raw: string): Schema;
 /** Decodes a patch document into the map `merge` takes. Numbers are kept as their exact
  * source digits. */
@@ -97,7 +92,7 @@ export declare function unmarshal(raw: string): DocObject;
 /** Renders a document as canonical JSON: compact, with object keys sorted at every
  * depth, so the same document always produces the same bytes. */
 export declare function marshal(doc: DocObject | null | undefined): string;
-/** The canonical JSON size of a document — the number the byte cap is about. */
+/** The canonical JSON size in UTF-8 bytes, used for cap enforcement. */
 export declare function size(doc: DocObject): number;
 /** Re-renders a stored document in the canonical form `marshal` produces. Normalizes
  * formatting only; number digits are unchanged. */

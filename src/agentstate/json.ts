@@ -1,15 +1,10 @@
-// A JSON reader/writer that does not use `JSON.parse`/`JSON.stringify` or the JS `number`
-// type. Every number is kept as its exact source digits (a `JsonNumber`, mirroring Go's
-// `json.Number`) until `canonicalNumber` (see number.ts) expands it; a JS `number` would
-// turn `9999999999999999` into `10000000000000000`.
-//
-// Mirrors agentstate.go's `encoding/json` with `dec.UseNumber()`: a document decodes to
-// plain objects/arrays/strings/booleans/null/JsonNumber, and a second JSON value after
-// the first is refused (`requireEOF`).
+// JSON parsing and serialization with exact number digits held in JsonNumber.
+// canonicalNumber expands exponents before storage. JavaScript numbers round
+// 9999999999999999 to 10000000000000000. Trailing JSON values are refused.
 
 import { TrailingContentError } from "./errors.js";
 
-/** A JSON number, held as the source digits rather than a lossy JS `number`. */
+/** A JSON number held as its exact source digits. */
 export class JsonNumber {
 	readonly raw: string;
 	constructor(raw: string) {
@@ -30,7 +25,7 @@ export function isPlainDocObject(v: DocValue): v is DocObject {
 	return v !== null && typeof v === "object" && !(v instanceof JsonNumber) && !Array.isArray(v);
 }
 
-/** The JSON type name a refusal quotes back — `agentstate.go`'s `jsonTypeName`. */
+/** The JSON type name used in refusals. */
 export function jsonTypeName(v: DocValue): string {
 	if (v === null) return "null";
 	if (typeof v === "boolean") return "bool";
@@ -44,14 +39,14 @@ export function quote(s: string): string {
 	return JSON.stringify(s);
 }
 
-/** Bounds a fragment quoted back in an error — `agentstate.go`'s `truncate`. */
+/** Bounds a fragment quoted in an error. */
 export function truncate(s: string, max: number): string {
 	return s.length <= max ? s : `${s.slice(0, max)}…`;
 }
 
 const encoder = new TextEncoder();
 
-/** The UTF-8 byte length of `s` — what Go's `len(string)` measures. */
+/** The UTF-8 byte length of `s`. */
 export function byteLength(s: string): number {
 	return encoder.encode(s).length;
 }
@@ -252,7 +247,7 @@ function parseNumber(state: ParseState): JsonNumber {
 	return new JsonNumber(text.slice(start, i));
 }
 
-/** Rejects a second JSON value after the first — `agentstate.go`'s `requireEOF`. */
+/** Rejects a second JSON value after the first. */
 function requireEOF(state: ParseState): void {
 	skipWhitespace(state);
 	if (state.pos >= state.text.length) return;
@@ -312,8 +307,7 @@ function marshalString(s: string): string {
 	return `${out}"`;
 }
 
-/** Compact canonical JSON, with object keys sorted at every depth — what Go's
- * `encoding/json` does for a `map[string]any`, and what the byte cap is measured on. */
+/** Compact canonical JSON with object keys sorted at every depth; used to measure the byte cap. */
 export function marshalValue(v: DocValue): string {
 	if (v === null) return "null";
 	if (typeof v === "boolean") return v ? "true" : "false";

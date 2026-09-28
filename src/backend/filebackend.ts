@@ -1,18 +1,7 @@
-// Σ storage as a JSON file in pi's working directory: read, merge (agentstate's `merge`),
-// write, a version counter, and a compare-and-set that refuses a stale commit.
-//
-// CONCURRENCY. Two `pi` sessions may share a working directory. A reader sees either the
-// previous complete file or the next complete one, and a stale commit is refused rather
-// than lost. Both properties come from one mechanism: a fixed temp path created with an
-// exclusive (O_EXCL) flag, written, then renamed onto the real path.
-//
-//   - The rename is atomic, so a reader never observes a torn write.
-//   - The exclusive create is the mutex for the compare-and-set. Concurrent commits open
-//     the same temp path and only one `open(..., "wx")` succeeds at a time; the others
-//     retry until the winner has renamed the file away. A waiting commit then re-reads
-//     the current version under the lock and, if it has moved, is refused as stale.
-//
-// There is no separate lock file.
+// Versioned JSON file storage with compare-and-set commits.
+// A fixed temp path, created with O_EXCL, serializes concurrent writers. Each writer
+// re-reads the version under the lock and refuses stale commits. Atomic rename
+// ensures readers see a complete file. The temp file also serves as the lock.
 
 import { open, readFile, rename, unlink } from "node:fs/promises";
 import { type DocObject, marshal, merge, type Schema, unmarshal } from "../agentstate/index.js";

@@ -1,8 +1,8 @@
-/** An invalid SCHEMA (an operator's authoring mistake), as opposed to an invalid patch. */
+/** An invalid schema. */
 export declare class AgentStateSchemaError extends Error {
     constructor(message: string);
 }
-/** A patch that is not a JSON object at all. */
+/** A patch that is not a JSON object. */
 export declare class MalformedPatchError extends Error {
     constructor(message: string);
 }
@@ -26,7 +26,7 @@ export declare class NestedListError extends Error {
 export declare class TooLargeError extends Error {
     constructor(message: string);
 }
-/** A number whose expanded decimal form is longer than MaxNumberBytes. */
+/** A number whose expanded decimal form is longer than MAX_NUMBER_BYTES. */
 export declare class NumberRangeError extends Error {
     constructor(message: string);
 }

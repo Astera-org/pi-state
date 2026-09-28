@@ -1,13 +1,12 @@
-// One class per refusal kind an agent state patch or schema can produce, so callers
-// tell refusals apart with `instanceof` rather than parsing a message string.
-/** An invalid SCHEMA (an operator's authoring mistake), as opposed to an invalid patch. */
+// Schema and patch refusal classes, distinguishable with `instanceof`.
+/** An invalid schema. */
 export class AgentStateSchemaError extends Error {
     constructor(message) {
         super(message);
         this.name = "AgentStateSchemaError";
     }
 }
-/** A patch that is not a JSON object at all. */
+/** A patch that is not a JSON object. */
 export class MalformedPatchError extends Error {
     constructor(message) {
         super(message);
@@ -49,7 +48,7 @@ export class TooLargeError extends Error {
         this.name = "TooLargeError";
     }
 }
-/** A number whose expanded decimal form is longer than MaxNumberBytes. */
+/** A number whose expanded decimal form is longer than MAX_NUMBER_BYTES. */
 export class NumberRangeError extends Error {
     constructor(message) {
         super(message);

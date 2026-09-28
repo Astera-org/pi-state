@@ -146,7 +146,7 @@ describe("refusals name what was declared and what arrived", () => {
 		expect((error as Error).message).toContain(want);
 	});
 
-	// The refusal states that no keys are declared instead of listing an empty collection.
+	// The refusal reports an empty declared key set.
 	test("the zero schema says it declares no keys", () => {
 		let error: unknown;
 		try {

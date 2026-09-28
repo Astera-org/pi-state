@@ -1,5 +1,4 @@
-// Shared fixtures for the agentstate / merge test suite: `schema()`, `patch(t, raw)` and
-// `render(t, doc)`.
+// Shared schema fixture and parsing/rendering helpers for agentstate tests.
 
 import { type DocObject, marshal, parsePatch, type Schema } from "../src/agentstate/index.js";
 

@@ -6,13 +6,10 @@
 			"recommended": true,
 			"style": {
 				"noNonNullAssertion": "off",
-				"useConst": "error",
-				"useNodejsImportProtocol": "off"
+				"useConst": "error"
 			},
 			"suspicious": {
-				"noExplicitAny": "off",
-				"noControlCharactersInRegex": "off",
-				"noEmptyInterface": "off"
+				"noExplicitAny": "off"
 			}
 		}
 	},

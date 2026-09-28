@@ -10,22 +10,18 @@ export interface Carriage {
 	/** `carried` and `notCarried` partition `declared`. */
 	carried: string[];
 	notCarried: string[];
-	/** A subset of carried: the carried keys whose value says nothing. */
+	/** Carried keys with empty values. */
 	empty: string[];
 	/** A key the document holds that the schema does not declare. */
 	undeclared: string[];
 }
 
-/** Reports an empty carriage: the schema asked for keys and the document holds
- * none of them. False for a schema that declares no keys — that makes "carried none of
- * them" vacuously true, a legitimate authored choice rather than a finding. */
+/** True when the schema declares keys and the document carries none. False for an empty schema. */
 export function carriesNothing(c: Carriage): boolean {
 	return c.declared.length > 0 && c.carried.length === 0;
 }
 
-/** Reports whether a stored value says nothing: an empty (or whitespace-only) string,
- * an empty object, or an empty list. A zero number and `false` are values an agent
- * chose, not emptiness. */
+/** True for whitespace-only strings, empty objects, and empty lists. Zero and false are non-empty. */
 export function isEmptyValue(v: DocValue): boolean {
 	if (typeof v === "string") return v.trim() === "";
 	if (Array.isArray(v)) return v.length === 0;

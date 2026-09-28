@@ -2,15 +2,11 @@
 // which of those are empty, and which document keys the schema does not declare.
 import { isPlainDocObject } from "./json.js";
 import { declaredKeys, unmarshal } from "./schema.js";
-/** Reports an empty carriage: the schema asked for keys and the document holds
- * none of them. False for a schema that declares no keys — that makes "carried none of
- * them" vacuously true, a legitimate authored choice rather than a finding. */
+/** True when the schema declares keys and the document carries none. False for an empty schema. */
 export function carriesNothing(c) {
     return c.declared.length > 0 && c.carried.length === 0;
 }
-/** Reports whether a stored value says nothing: an empty (or whitespace-only) string,
- * an empty object, or an empty list. A zero number and `false` are values an agent
- * chose, not emptiness. */
+/** True for whitespace-only strings, empty objects, and empty lists. Zero and false are non-empty. */
 export function isEmptyValue(v) {
     if (typeof v === "string")
         return v.trim() === "";
