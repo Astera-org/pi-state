@@ -6,7 +6,7 @@
 // record, so the refusal table below builds options directly rather than parsing
 // environment-variable strings.
 //
-// `test/testdata/eng1269/pi-ordering.json` is a recording of a real pinned `pi-state`
+// `test/testdata/turn-event-ordering/pi-ordering.json` is a recording of a real pinned `pi-state`
 // binary's event/branch snapshots around one `state_commit` turn, captured by an external
 // probe script. It is portable data (pi's own message shapes) with no dependency on any
 // external build or runtime, and it is what pins this module's assumption about pi's own
@@ -339,7 +339,9 @@ const ctxWith = (branch: unknown[]) => ({ sessionManager: { getBranch: () => bra
  * alone, and eleven checks stayed green in this mechanism's history because every
  * hand-built fixture contained the finished cycle.
  */
-const RECORDING = JSON.parse(readFileSync(new URL("./testdata/eng1269/pi-ordering.json", import.meta.url), "utf8"));
+const RECORDING = JSON.parse(
+	readFileSync(new URL("./testdata/turn-event-ordering/pi-ordering.json", import.meta.url), "utf8"),
+);
 
 /** One recorded arm's snapshots, with the entry pool resolved back into whole branches. */
 function recordedTurn(arm: string) {
@@ -818,7 +820,7 @@ describe("installStateBoundary", () => {
 describe("the byte count is counted, never materialized", () => {
 	// `bytesBefore` and `bytesAfter` are HELD versus SENT, and how they are counted decides
 	// how much transcript fits under pi's heap limit. These two moved into this module
-	// with ENG-1294: the subject is the byte counter, which used to be `statewindow.ts`'s
+	// when the request rewrite was retired: the counter used to be `statewindow.ts`'s
 	// `byteLength` over a request body and is now this module's `messagesBytes` over the
 	// held branch — the retired rewrite took the counter it measured with it.
 	const multibyte = (n: number) => "héllo 日本 \u{1F600} ".repeat(n);

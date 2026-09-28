@@ -1,4 +1,4 @@
-// ENG-1404: a declared key can say what it HOLDS via `desc`.
+// A declared key can say what it HOLDS via `desc`.
 //
 // No two-release rollback contract is tested here (a previous server binary's decoder
 // must still refuse a schema carrying `desc`, checked by running that old decoder): this

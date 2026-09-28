@@ -84,7 +84,7 @@ export function fieldSpec(field) {
     return field.type === Kind.List ? `${field.type}[${field.maxItems}]` : field.type;
 }
 /** Every declared key's spec, keyed by name — what an agent needs to write a patch that
- * validates on the first try (ENG-1116). */
+ * validates on the first try. */
 export function declaredTypes(schema) {
     const out = {};
     for (const name of declaredKeys(schema))
@@ -98,7 +98,7 @@ export function declaredSummary(schema) {
         return "no keys at all";
     return names.map((name) => `${name} ${fieldSpec(schema.keys[name])}`).join(", ");
 }
-/** Whether any declared key carries prose (ENG-1404). */
+/** Whether any declared key carries prose. */
 export function described(schema) {
     return Object.values(schema.keys).some((f) => (f.desc ?? "").trim() !== "");
 }

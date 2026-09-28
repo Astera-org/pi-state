@@ -154,7 +154,7 @@ export function merge(doc: DocObject | null | undefined, patch: DocObject, schem
 	for (const key of sortedKeys(patch)) {
 		const field = schema.keys[key];
 		if (!field) {
-			// Names the offending key AND what is on offer with its types (ENG-1116).
+			// Names the offending key AND what is on offer with its types.
 			throw new UnknownKeyError(
 				`key ${quote(key)} (the schema declares ${declaredSummary(schema)}): this key is not declared by the role's state schema`,
 			);

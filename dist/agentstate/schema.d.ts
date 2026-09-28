@@ -87,11 +87,11 @@ export declare function declaredKeys(schema: Schema): string[];
  * the kind, with a list's maxItems in brackets — `list[8]`, not `{"type":"list",...}`. */
 export declare function fieldSpec(field: Field): string;
 /** Every declared key's spec, keyed by name — what an agent needs to write a patch that
- * validates on the first try (ENG-1116). */
+ * validates on the first try. */
 export declare function declaredTypes(schema: Schema): Record<string, string>;
 /** The whole declared key set as sorted `name type` pairs — the form a refusal quotes back. */
 export declare function declaredSummary(schema: Schema): string;
-/** Whether any declared key carries prose (ENG-1404). */
+/** Whether any declared key carries prose. */
 export declare function described(schema: Schema): boolean;
 /** declaredSummary plus each key's prose: sorted `name (type) — what it holds`. */
 export declare function declaredGuide(schema: Schema): string;

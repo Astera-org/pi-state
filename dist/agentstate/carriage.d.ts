@@ -11,7 +11,7 @@ export interface Carriage {
     /** A key the document holds that the schema does not declare. */
     undeclared: string[];
 }
-/** Reports the ENG-1172 signature: the schema asked for keys and the document holds
+/** Reports an empty carriage: the schema asked for keys and the document holds
  * none of them. False for a schema that declares no keys — that makes "carried none of
  * them" vacuously true, a legitimate authored choice rather than a finding. */
 export declare function carriesNothing(c: Carriage): boolean;

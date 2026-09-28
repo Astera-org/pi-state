@@ -145,7 +145,7 @@ export function fieldSpec(field: Field): string {
 }
 
 /** Every declared key's spec, keyed by name — what an agent needs to write a patch that
- * validates on the first try (ENG-1116). */
+ * validates on the first try. */
 export function declaredTypes(schema: Schema): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const name of declaredKeys(schema)) out[name] = fieldSpec(schema.keys[name]);
@@ -159,7 +159,7 @@ export function declaredSummary(schema: Schema): string {
 	return names.map((name) => `${name} ${fieldSpec(schema.keys[name])}`).join(", ");
 }
 
-/** Whether any declared key carries prose (ENG-1404). */
+/** Whether any declared key carries prose. */
 export function described(schema: Schema): boolean {
 	return Object.values(schema.keys).some((f) => (f.desc ?? "").trim() !== "");
 }

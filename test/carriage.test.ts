@@ -1,4 +1,4 @@
-// ENG-1172: the content reading, against its own two failure modes (calling an absence
+// The content reading, against its own two failure modes (calling an absence
 // a finding, or a finding an absence).
 
 import { describe, expect, test } from "vitest";
