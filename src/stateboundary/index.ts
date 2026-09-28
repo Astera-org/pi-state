@@ -1,9 +1,7 @@
-// The transcript-boundary delivery of Sigma (Sigma). Bounds an agent's prompt by
-// replacing pi's transcript, at the end of a turn that accepted a commit, with
-// [Sigma, the newest user turn, N trailing tool cycles] instead of full history.
+// Transcript-boundary delivery of Σ. At the end of a turn that accepted a commit, replaces
+// pi's transcript with [Σ, the newest user turn, N trailing tool cycles].
 //
-// No environment reads: every caller supplies its own StateWindowOptions, built from
-// whatever its own environment variables are named.
+// No environment reads: callers supply StateWindowOptions.
 
 export type { PairedCycle, PairingRefusal, PairingShape } from "./pairing.js";
 export { pairCycles } from "./pairing.js";

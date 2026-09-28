@@ -1,5 +1,5 @@
-// A READING of a stored document against its schema, not a verdict on
-// whether it's true.
+// Reads a stored document against its schema: which declared keys the document carries,
+// which of those are empty, and which document keys the schema does not declare.
 
 import { type DocValue, isPlainDocObject } from "./json.js";
 import { declaredKeys, type Schema, unmarshal } from "./schema.js";
@@ -7,7 +7,7 @@ import { declaredKeys, type Schema, unmarshal } from "./schema.js";
 export interface Carriage {
 	/** The schema's own key set. */
 	declared: string[];
-	/** declared and notCarried partition Declared. */
+	/** `carried` and `notCarried` partition `declared`. */
 	carried: string[];
 	notCarried: string[];
 	/** A subset of carried: the carried keys whose value says nothing. */

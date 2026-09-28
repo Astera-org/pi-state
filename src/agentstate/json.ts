@@ -1,13 +1,11 @@
-// A JSON reader/writer that never routes a number through `JSON.parse`/`JSON.stringify`
-// or the JS `number` type: `9999999999999999` would silently become `10000000000000000`,
-// and a document sized right at the byte cap would come back a byte over. Every number is
-// kept as the exact source digits (mirroring Go's `json.Number`) until `canonicalNumber`
-// (see number.ts) deliberately expands it.
+// A JSON reader/writer that does not use `JSON.parse`/`JSON.stringify` or the JS `number`
+// type. Every number is kept as its exact source digits (a `JsonNumber`, mirroring Go's
+// `json.Number`) until `canonicalNumber` (see number.ts) expands it; a JS `number` would
+// turn `9999999999999999` into `10000000000000000`.
 //
-// This mirrors what agentstate.go gets from `encoding/json` plus `dec.UseNumber()`: a
-// document decodes to plain objects/arrays/strings/booleans/null/JsonNumber, and a second
-// JSON value after the first is refused (`requireEOF` in the Go source) rather than
-// silently ignored.
+// Mirrors agentstate.go's `encoding/json` with `dec.UseNumber()`: a document decodes to
+// plain objects/arrays/strings/booleans/null/JsonNumber, and a second JSON value after
+// the first is refused (`requireEOF`).
 
 import { TrailingContentError } from "./errors.js";
 

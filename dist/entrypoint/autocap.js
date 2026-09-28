@@ -1,30 +1,16 @@
 // Resolves a schema's auto sizing (see `../agentstate/schema.ts`'s `maxStateBytes` and
-// `autoMaxStateBytesPercent`) into a concrete `maxStateBytes`, using whatever this
-// entrypoint can learn about the active model's context window. Auto sizing is the
-// DEFAULT for a schema that declares no `maxStateBytes` — not an opt-in — so this runs
-// unconditionally whenever a schema has no explicit cap. `agentstate` itself cannot do
-// this — it is pure logic with no I/O and no notion of "the current model" — so this is
-// the one place in this repo that is allowed to know about `pi`'s model/session surface.
+// `autoMaxStateBytesPercent`) into a concrete `maxStateBytes` from the active model's
+// context window. Applies to every schema that declares no explicit `maxStateBytes`.
 //
-// Two sources, in priority order:
-//   1. `pi` itself, when it reports the active model's `contextWindow` — a `session_start`
-//      or `model_select` event's `ExtensionContext`/`Model` (both hold `contextWindow` in
-//      this repo's own local structural types below, kept dependency-free the same way
-//      `entrypoint/index.ts`'s `PiExtensionAPI` is). This is live and authoritative
-//      whenever it is available.
-//   2. `ENV_STATE_CONTEXT_WINDOW_TOKENS` (`env.ts`), an operator-set stopgap for install
-//      time (before any session has started, so there is no live model yet) or for a
-//      `pi` that, for whatever reason, does not populate `model` when this runs.
-//
-// `pi`'s own extension API (packages/coding-agent/src/core/extensions/types.ts in the
-// pi monorepo) DOES expose `contextWindow` to extensions — `ExtensionContext.model` and
-// `ModelSelectEvent.model` both carry it (`Model.contextWindow: number`, required) — so
-// source 1 above is a real, live-checked API surface, not a guess.
+// The context window comes from, in priority order:
+//   1. `pi`'s report of the active model (`ExtensionContext.model` on `session_start`,
+//      `ModelSelectEvent.model` on `model_select`; `Model.contextWindow` is a number).
+//   2. `ENV_STATE_CONTEXT_WINDOW_TOKENS` (`env.ts`), used at install time (no session,
+//      hence no model yet) or when `pi` reports no model.
 import { DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, resolveAutoMaxStateBytes } from "../agentstate/index.js";
 import { ENV_STATE_CONTEXT_WINDOW_TOKENS } from "./env.js";
-/** Reads `ENV_STATE_CONTEXT_WINDOW_TOKENS`. Unset or not a positive number both mean "no
- * override from here" — this is a best-effort stopgap, not a validated operator setting
- * with kill-switch semantics, so it fails open (silently unresolved) rather than closed. */
+/** Reads `ENV_STATE_CONTEXT_WINDOW_TOKENS`, floored to an integer. Returns undefined
+ * when it is unset or not a positive finite number. */
 export function contextWindowTokensFromEnv(env) {
     const raw = env[ENV_STATE_CONTEXT_WINDOW_TOKENS];
     if (raw === undefined || raw.trim() === "")
@@ -36,13 +22,10 @@ function isPositiveFiniteNumber(v) {
     return typeof v === "number" && Number.isFinite(v) && v > 0;
 }
 /**
- * The context window this `pi`'s active model reports, read off a `session_start`
- * event's `ExtensionContext` (its `.model`) or a `model_select` event (its `.model`
- * directly) — both structurally `{ model?: { contextWindow?: unknown } }`, which is all
- * of `ExtensionContext`/`ModelSelectEvent` this needs. Declared as `unknown` and read
- * defensively, like every other pi-shaped value this repo takes in (see
- * `stateboundary/statewindow.ts`'s `sessionManagerOf`): this file has no `pi` package
- * dependency to import the real types from.
+ * The active model's context window, read from `value.model.contextWindow` — the shape of
+ * both a `session_start` `ExtensionContext` and a `model_select` event. `value` is typed
+ * `unknown` and read defensively because this package has no `pi` dependency. Returns
+ * undefined unless the value is a positive finite number.
  */
 export function contextWindowFromModelHolder(value) {
     if (value === null || typeof value !== "object")
@@ -54,27 +37,17 @@ export function contextWindowFromModelHolder(value) {
     return isPositiveFiniteNumber(contextWindow) ? contextWindow : undefined;
 }
 /**
- * Resolves `schema`'s auto sizing against `contextWindowTokens` and substitutes the
- * result into `schema.maxStateBytes` in place — mutated rather than replaced, so a
- * `Schema` object already captured by a tool's `execute` closure (see
- * `entrypoint/index.ts`'s `stateGetTool`/`stateCommitTool`) sees the update on its next
- * call, before merge or cap enforcement (`agentstate/merge.ts`) ever reads it.
+ * Resolves `schema`'s auto sizing against `contextWindowTokens` and sets
+ * `schema.maxStateBytes` in place, so a `Schema` already captured by the tools'
+ * `execute` closures sees the new cap on its next call.
  *
- * No-ops whenever: `declaredMaxStateBytes` (the schema FILE's own `maxStateBytes`,
- * captured once at load time — NOT `schema.maxStateBytes`, which this function itself
- * may have already overwritten on an earlier, less-informed call) is a positive number
- * — an explicit cap always wins over auto sizing, full stop, no matter what
- * `contextWindowTokens` says; or `contextWindowTokens` is unresolved — nothing to
- * compute from yet, so `schemaCap` keeps answering `DEFAULT_MAX_STATE_BYTES` (the
- * last-resort fallback, for when this genuinely never gets called with a resolvable
- * context window) until a later call supplies one.
+ * No-op when `declaredMaxStateBytes` is positive, or when `contextWindowTokens` is
+ * undefined (`schemaCap` then returns `DEFAULT_MAX_STATE_BYTES`).
+ * `declaredMaxStateBytes` is the schema file's own `maxStateBytes`, captured at load
+ * time; it must not be read from `schema.maxStateBytes`, which this function overwrites.
  *
- * There is no "auto is off" case: a schema with no explicit `maxStateBytes` is auto
- * sizing's default target, not something that opted in.
- *
- * Safe to call repeatedly as better information arrives (env-var stopgap at install
- * time, then a live `contextWindow` at `session_start`, again at `model_select`): it
- * recomputes and only logs when the resolved byte count actually changes.
+ * Idempotent and safe to call repeatedly (install, `session_start`, `model_select`); it
+ * logs only when the resolved byte count changes.
  */
 export function applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokens, log) {
     if ((declaredMaxStateBytes ?? 0) > 0)

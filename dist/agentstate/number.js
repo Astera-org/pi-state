@@ -1,7 +1,6 @@
-// Canonicalizes and bounds a JSON number for agent state storage. The byte cap is
-// measured on the EXPONENT-FREE decimal form a number is stored as, because `1e10000` is
-// 16 bytes of JSON and ten thousand and one digits once expanded, and sizing the short
-// form would make the cap a measurement of a representation nothing stores.
+// Canonicalizes and bounds a JSON number for agent state storage. Numbers are stored in
+// exponent-free decimal form, and the byte cap is measured on that form: `1e10000` is 16
+// bytes of JSON but expands to 10001 digits.
 import { NumberRangeError } from "./errors.js";
 import { JsonNumber, truncate } from "./json.js";
 /** Bounds the canonical (expanded) form of one number, in bytes. */

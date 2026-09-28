@@ -1,12 +1,8 @@
-// Tests for the state window's Σ machinery: the configuration's fail-closed parsing, the
-// kill switch's asymmetry, the cycle depth's strict grammar, Σ selection, the cache's
-// session identity handling, and the byte-exact carving of `doc`/`version` out of a
-// state_commit payload.
+// Tests for the state window's Σ machinery: fail-closed configuration parsing, the kill
+// switch's asymmetry, the cycle depth grammar, Σ selection, the cache's session identity
+// handling, and byte-exact extraction of `doc`/`version` from a state_commit payload.
 //
-// The "configuration fails closed" cases build a `StateWindowOptions` object directly
-// rather than an env-var record, since turning an environment into that object is a
-// separate, thin concern outside this module — `enabled` here is a real boolean, not a
-// raw string parsed by the core.
+// Configuration cases build a `StateWindowOptions` object directly; `enabled` is a boolean.
 
 import { describe, expect, test } from "vitest";
 import { STATE_BOUNDARY_SOURCE, sigmaMessage, writeBoundary } from "../src/stateboundary/stateboundary.js";
@@ -40,9 +36,9 @@ import {
 const SIGMA = "mcp__sproot__state_commit";
 
 /**
- * A successful state_commit result, exactly as an MCP-backed `state_commit` tool returns
- * it: numeric `version`, the committed document under `doc`, transport beside them —
- * rendered COMPACT, with Go's map-key ordering.
+ * A successful state_commit result as an MCP-backed `state_commit` tool returns it: numeric
+ * `version`, the committed document under `doc`, plus transport fields; compact rendering
+ * with Go's map-key ordering.
  */
 const committed = (version: number, doc?: unknown) =>
 	JSON.stringify({
@@ -53,16 +49,14 @@ const committed = (version: number, doc?: unknown) =>
 	});
 
 /**
- * A stale-version CAS refusal, as an MCP-backed `state_commit` tool returns it: the
- * bridge throws on the server's `isError`, so pi finalizes the call with `isError: true`
- * and the text is whatever the refusal said.
+ * A stale-version CAS refusal as an MCP-backed `state_commit` tool returns it. The bridge
+ * throws on the server's `isError`, so pi finalizes the call with `isError: true`.
  */
 const staleRefusal = "conflict: state version 7 is stale; re-read with state_get and commit again";
 
 /**
- * pi's `tool_result` event for one finalized state_commit call — the ONLY thing that can
- * make a result Σ. Shaped as pi's `ToolResultEventBase`: `toolName`, `toolCallId`,
- * `content` blocks and the pre-serialization `isError`.
+ * pi's `tool_result` event for one finalized state_commit call, shaped as
+ * `ToolResultEventBase`: `toolName`, `toolCallId`, `content` blocks and `isError`.
  */
 const toolResultEvent = (toolCallId: string, text: string, over: Record<string, unknown> = {}) => ({
 	type: "tool_result",
@@ -75,9 +69,8 @@ const toolResultEvent = (toolCallId: string, text: string, over: Record<string, 
 });
 
 /**
- * The same result as pi PERSISTS it — `createToolResultMessage`'s shape, which is what a
- * reloaded session hands back. The four fields the cache reads are named identically to
- * the event's, which is why one gate serves both paths.
+ * The same result as pi persists it (`createToolResultMessage`'s shape, returned by a
+ * reloaded session). The four fields the cache reads have the same names as on the event.
  */
 const toolResultMessage = (toolCallId: string, text: string, over: Record<string, unknown> = {}) => ({
 	role: "toolResult",
@@ -98,7 +91,7 @@ const entry = (message: Record<string, unknown>) => ({
 	message,
 });
 
-/** Σ as the window receives it, built by the same code the cache uses. */
+/** Σ built by the same code the cache uses. */
 const sigmaOf = (toolCallId: string, text: string) =>
 	sigmaFromResult(observeStateCommitResult(toolResultEvent(toolCallId, text)));
 
@@ -112,7 +105,7 @@ describe("configuration fails closed", () => {
 		for (const off of ["0", "false", "no", "off", "OFF", " No ", "garbage", "truthy", "-1", "2"]) {
 			expect(resolveStateWindow({ enabled: true, killSwitch: off }), off).toBeNull();
 		}
-		// Only an explicit affirmative — or no override at all — lets the mode run.
+		// Only an explicit affirmative, or no override, lets the mode run.
 		for (const on of ["1", "true", "yes", "on", " ON ", ""]) {
 			expect(resolveStateWindow({ enabled: true, killSwitch: on }), on).toEqual({ cycles: DEFAULT_TOOL_CYCLES });
 		}
@@ -135,10 +128,6 @@ describe("configuration fails closed", () => {
 		expect(resolveStateWindow({ enabled: true, cycles: "2" })?.cycles).toBe(2);
 	});
 
-	// The one definition, not two: `resolveStateWindow` is DERIVED from `stateWindowSetting`,
-	// so this is the test that keeps them one — an explanation produced by a second read of
-	// the options could name a condition that is not the one that refused, which is worse
-	// than the silence it replaced.
 	test("every null resolveStateWindow returns is a setting that names its own condition", () => {
 		const off: Array<[StateWindowOptions, string]> = [
 			[{ enabled: false }, "mode"],
@@ -153,16 +142,13 @@ describe("configuration fails closed", () => {
 			expect(setting.condition, JSON.stringify(options)).toBe(condition);
 			expect(setting.reason.length, `${condition} refused with an empty reason`).toBeGreaterThan(0);
 		}
-		// And the floor: a setting that resolves carries the configuration and no condition.
+		// A setting that resolves carries the configuration and no condition.
 		const on = stateWindowSetting({ enabled: true, cycles: "2" });
 		expect("condition" in on).toBe(false);
 		expect(on).toEqual({ cycles: 2 });
 	});
 
-	// The asymmetry, as a FLAG rather than as prose: permissive toward off, strict toward
-	// on. A kill switch an operator recognizably set is configuration; everything else —
-	// including a kill switch this module cannot read — is a fault the harness refuses a
-	// run on.
+	// `fault` is false only for a recognized negative kill switch.
 	test("only a recognized negative kill switch is somebody's decision; every other refusal is a fault", () => {
 		for (const deliberate of ["0", "false", "no", "off", "OFF", " No "]) {
 			const setting = stateWindowSetting({ enabled: true, killSwitch: deliberate }) as StateWindowOff;
@@ -186,7 +172,6 @@ describe("configuration fails closed", () => {
 	});
 
 	test("the ceiling matches an external write-boundary check", () => {
-		// A role an external dashboard accepts must not be one this module refuses.
 		expect(MAX_TOOL_CYCLES).toBe(20);
 	});
 });
@@ -214,10 +199,8 @@ describe("Σ selection", () => {
 	});
 
 	test("ONLY pi's isError === false makes a result Σ — nothing weaker, nothing absent", () => {
-		// The whole point: success is the flag pi finalized the call with, and it is compared
-		// against the literal `false`. An ABSENT flag is a pi that no longer reports one —
-		// the condition under which this must not claim a success — and every truthy
-		// spelling is a refusal.
+		// Success is `isError` compared to the literal `false`; an absent flag or any other
+		// value is not a success.
 		expect(observeStateCommitResult(toolResultEvent("c1", committed(7)))).toEqual({
 			toolName: SIGMA,
 			toolCallId: "c1",
@@ -232,7 +215,7 @@ describe("Σ selection", () => {
 		]) {
 			expect(observeStateCommitResult(toolResultEvent("c1", committed(7), over)), JSON.stringify(over)).toBeNull();
 		}
-		// The event still has to name a state_commit, and identify its call.
+		// The event must name a state_commit and identify its call.
 		expect(observeStateCommitResult(toolResultEvent("c1", committed(7), { toolName: "read" }))).toBeNull();
 		expect(observeStateCommitResult(toolResultEvent("", committed(7))), "no toolCallId").toBeNull();
 		for (const junk of [null, undefined, "tool_result", 42, [toolResultEvent("c1", committed(7))]]) {
@@ -240,10 +223,9 @@ describe("Σ selection", () => {
 		}
 	});
 
-	test("a REFUSAL is the ordinary retry path, and never shadows the success behind it", () => {
-		// The stale-version CAS refusal is the designed, expected retry path of an
-		// MCP-backed backend. It reaches pi as a thrown bridge error, so the event carries
-		// isError: true — and the cache leaves the previous Σ standing.
+	test("a refusal never shadows the newest success", () => {
+		// A stale-version CAS refusal arrives with isError: true and leaves the previous Σ
+		// standing.
 		const cache = newStateCommitCache();
 		cache.observe(toolResultEvent("c1", committed(4)));
 		cache.observe(toolResultEvent("c2", staleRefusal, { isError: true }));
@@ -266,13 +248,11 @@ describe("Σ selection", () => {
 	});
 
 	test("a result text the window cannot carry is not Σ, however pi flagged it", () => {
-		// Success is settled; what is left is EXTRACTION, and it fails closed. A payload
-		// whose version does not slice out as a JSON number, or whose doc does not slice out
-		// as an object, is a contract drift with the MCP-backed backend's own wire format —
-		// re-homing those bytes would put them in the prompt as the agent's memory.
+		// Extraction fails closed: a version that does not slice out as a JSON number, or a doc
+		// that does not slice out as an object, yields no Σ.
 		expect(sigmaOf("c1", committed(7))).toEqual({
 			toolCallId: "c1",
-			// The cached bytes ride along: the id alone cannot identify Σ's own message.
+			// The cached bytes are carried alongside.
 			text: committed(7),
 			version: 7,
 			versionText: "7",
@@ -308,9 +288,8 @@ describe("Σ selection", () => {
 	});
 
 	test("preserves arbitrary-precision numbers a JS round trip would CORRUPT", () => {
-		// An MCP-backed backend keeps arbitrary-precision numbers deliberately. JSON.parse
-		// turns 9999999999999999 into 10000000000000000, so a reserialized Σ reaches the
-		// model with DIFFERENT VALUES than were committed.
+		// JSON.parse turns 9999999999999999 into 10000000000000000; Σ must carry the committed
+		// digits.
 		const raw = '{"doc":{"big":9999999999999999,"tiny":1e-400,"neg":-0},"version":9007199254740993}';
 		expect(JSON.stringify(JSON.parse(raw).doc.big), "the corruption is real, not hypothetical").toBe(
 			"10000000000000000",
@@ -326,8 +305,7 @@ describe("Σ selection", () => {
 	});
 
 	test("a document at exactly the 4096-byte cap re-homes as exactly 4096 bytes", () => {
-		// A cap measured on one representation must not be paid on another: the 4096-byte
-		// canonical document came back 4097 when reserialized.
+		// The 4096-byte canonical document is 4097 bytes when reserialized.
 		let doc: { pad: string } = { pad: "" };
 		for (let n = 0; JSON.stringify(doc).length !== 4096 && n < 4200; n++) {
 			doc = { pad: "x".repeat(n) };
@@ -359,11 +337,8 @@ describe("Σ selection", () => {
 	});
 
 	test("a success whose document is missing does not wipe the Σ behind it", () => {
-		// A payload with no `doc` must not re-home version 7 with an EMPTY document AND drop
-		// the state-bearing cycle. The agent's memory quietly becoming nothing is the same
-		// failure class as re-homing a refusal — so the cache holds it (pi said it
-		// succeeded) and the EXTRACTION declines it, leaving the window with no Σ rather
-		// than an empty one.
+		// The cache holds the docless result (pi reported success) and extraction declines it, so
+		// Σ is absent rather than an empty document.
 		const docless = JSON.stringify({ version: 7 });
 		const cache = newStateCommitCache();
 		cache.observe(toolResultEvent("c1", committed(4)));
@@ -380,8 +355,7 @@ describe("Σ selection", () => {
 	});
 
 	test("an engram tool result of the same shape is not eligible to become Σ", () => {
-		// Exact-name, not suffix: `mcp__sproot-engram__state_commit` is a real, differently
-		// named tool. It is refused at the CACHE now, so it can never reach the window.
+		// Tool names match exactly, not by suffix; the cache refuses this name.
 		const engram = "mcp__sproot-engram__state_commit";
 		const cache = newStateCommitCache();
 		expect(isStateCommitToolName(engram), "the name gate is exact, not a suffix match").toBe(false);
@@ -390,10 +364,8 @@ describe("Σ selection", () => {
 	});
 
 	test("a RESUMED session re-derives Σ from the transcript pi reloaded", () => {
-		// pi reloads a session's entries but replays no tool execution, so the live event
-		// stream alone would leave a respawned process bounding the prompt with no Σ in it.
-		// It does not have to: pi PERSISTS `isError` on every toolResult entry, so the seed
-		// consults the same flag a live event does and no text predicate comes back.
+		// pi reloads a session's entries but replays no tool execution. pi persists `isError` on
+		// every toolResult entry, so the seed consults the same flag a live event does.
 		const resumed = newStateCommitCache();
 		expect(resumed.latest(), "nothing was executed in this process").toBeNull();
 		seedStateCommitCacheFromEntries(resumed, [
@@ -418,10 +390,7 @@ describe("Σ selection", () => {
 	});
 
 	test("the seed reads pi's persisted flag, and a readable branch replaces the cache", () => {
-		// The persisted shape is pi's own (an external trace normalizer reads these very
-		// records with a typed IsError field), so the seed hands each entry's message to
-		// the SAME gate a live event goes through — a refusal on disk is refused for the
-		// same reason it is refused live.
+		// The seed hands each entry's message to the same gate a live event goes through.
 		const only = (message: Record<string, unknown>) => {
 			const c = newStateCommitCache();
 			seedStateCommitCacheFromEntries(c, [entry(message)]);
@@ -433,13 +402,12 @@ describe("Σ selection", () => {
 			"an absent flag is not a success",
 		).toBeNull();
 		expect(only(toolResultMessage("c1", committed(4)))?.toolCallId).toBe("c1");
-		// Junk on the branch is ignored by that gate rather than by a check of its own.
+		// Non-message and malformed entries are ignored.
 		const junk = newStateCommitCache();
 		seedStateCommitCacheFromEntries(junk, [null, "nope", 7, {}, { message: null }, { message: "x" }, []]);
 		expect(junk.latest()).toBeNull();
 
-		// A readable branch replaces the cache, because a replaced session's Σ is not this
-		// session's.
+		// A readable branch replaces the cache.
 		seedStateCommitCache({ sessionManager: { getBranch: () => [entry(toolResultMessage("c7", committed(8)))] } });
 		expect(stateCommitCache().latest()?.toolCallId).toBe("c7");
 		seedStateCommitCache({ sessionManager: { getBranch: () => [] } });
@@ -447,12 +415,9 @@ describe("Σ selection", () => {
 	});
 
 	test("an unreadable branch keeps Σ only while the session id says it is the SAME session", () => {
-		// `session_start` is re-entrant: a RELOAD of this session and a REPLACEMENT by
-		// `/new`, `/fork` or `/resume` arrive through the same event. Keeping the cache
-		// unconditionally injects session A's durable state into session B; clearing
-		// unconditionally makes a pi with no branch API permanently stateless. Only the
-		// session id can tell the two apart, so retention is tied to it and every answer
-		// short of "provably the same session" clears.
+		// `session_start` is re-entrant: a reload of this session and a replacement by `/new`,
+		// `/fork` or `/resume` arrive through the same event. Only the session id distinguishes
+		// them, so the cache is kept only when the id matches the session it was built for.
 		const branchOf = (id: string, toolCallId: string, text: string) => ({
 			sessionManager: { getSessionId: () => id, getBranch: () => [entry(toolResultMessage(toolCallId, text))] },
 		});
@@ -468,8 +433,7 @@ describe("Σ selection", () => {
 		expect(stateCommitCache().latest()?.toolCallId, "a RELOAD of S1 keeps what S1 committed").toBe("c2");
 		expect(kept.join("")).toMatch(/still session S1 — kept the Σ already cached/);
 
-		// Everything else clears. A different session is the defect this exists for; an
-		// unreadable or absent id is an unverifiable claim, which is not a licence to keep.
+		// A different, unreadable or absent id clears.
 		for (const [name, ctx] of [
 			["a REPLACEMENT session", noBranch("S2")],
 			[
@@ -499,11 +463,8 @@ describe("Σ selection", () => {
 			expect(notes.join("")).toMatch(/cleared Σ rather than carry another session's into it/);
 		}
 
-		// NO IDENTITY WAS EVER ESTABLISHED — a pi exposing neither API. The cache was filled
-		// by live events alone, so "the id now equals the id then" is `null === null`, which
-		// is two unknowns matching rather than a session matching itself. That must not
-		// retain: `/new` on such a pi is the same leak, reached without any id ever
-		// differing.
+		// No identity ever established (a pi exposing neither API): the cache was filled by live
+		// events alone, and `null === null` must not count as the same session, so it clears.
 		resetStateCommitCache();
 		stateCommitCache().observe(toolResultEvent("live", committed(3)));
 		expect(stateCommitCache().latest()?.toolCallId).toBe("live");
@@ -515,17 +476,12 @@ describe("Σ selection", () => {
 	});
 
 	test("a replacement session's OWN Σ survives its reload — the clear records whose session it became", () => {
-		// THREE steps in order, which is why neither the retain case nor the clear case
-		// caught this on its own: each stopped one step short.
+		// Sequence:
+		//   S1 cached -> unreadable replacement by S2 clears
+		//             -> S2 commits live
+		//             -> unreadable reload of S2 keeps what S2 committed.
 		//
-		//   S1 cached → unreadable replacement by S2 CLEARS (correctly)
-		//             → S2 commits live
-		//             → unreadable reload of S2 must KEEP what S2 committed.
-		//
-		// The last step can only be decided if the CLEAR recorded that the cache had become
-		// S2's. Without that the reload cannot identify itself, clears again, and S2 loses
-		// its own memory — the under-re-homing direction, reached with no predicate wrong
-		// anywhere and every clear-stopping test still green.
+		// The last step requires the clear to have recorded that the cache belongs to S2.
 		const branchOf = (id: string, toolCallId: string, text: string) => ({
 			sessionManager: { getSessionId: () => id, getBranch: () => [entry(toolResultMessage(toolCallId, text))] },
 		});
@@ -548,12 +504,11 @@ describe("Σ selection", () => {
 		).toBe("c9");
 		expect(notes.join("")).toMatch(/still session S2 — kept the Σ already cached/);
 
-		// And the guarantee is still one-way: S3 does not inherit what S2 committed.
+		// S3 does not inherit what S2 committed.
 		seedStateCommitCache(noBranch("S3"));
 		expect(stateCommitCache().latest()).toBeNull();
 
-		// reset drops the IDENTITY with the contents. Leaving it behind would let a later
-		// session prove itself "the same" as one this process no longer holds anything for.
+		// Reset drops the identity along with the contents.
 		seedStateCommitCache(branchOf("S4", "c4", committed(2)));
 		resetStateCommitCache();
 		stateCommitCache().observe(toolResultEvent("after-reset", committed(3)));
@@ -565,12 +520,9 @@ describe("Σ selection", () => {
 	});
 
 	test("the installed handler feeds the CURRENT cache, not the one bound when it was installed", () => {
-		// installStateCommitCache runs ONCE, at extension load; every later `session_start`
-		// seed REPLACES the binding. A handler closed over the cache it saw at install time
-		// would go on filling an orphan — every live commit after the first session_start
-		// invisible, Σ frozen at whatever the seed found, and no predicate wrong anywhere.
-		// This is the same establish-here/read-there shape as the identity above, on the
-		// other half of the split.
+		// installStateCommitCache runs once at extension load; each later `session_start` seed
+		// replaces the binding. The handler must feed the current cache, not the one bound at
+		// install time.
 		const handlers: Array<{ event: string; handler: (event: unknown, ctx: unknown) => unknown }> = [];
 		installStateCommitCache({ on: (event, handler) => handlers.push({ event, handler }) });
 		expect(handlers.map((h) => h.event)).toEqual(["tool_result"]);
@@ -586,13 +538,9 @@ describe("Σ selection", () => {
 	});
 
 	test("the boundary resolves Σ at WRITE time, across a rebinding seed", () => {
-		// The third site of the same shape, one layer out: an entrypoint installs the
-		// boundary at extension load — BEFORE the first `session_start` seeds or replaces
-		// the binding. writeBoundary's default supplier is
-		// `() => stateCommitCache().latest()`, so this drives it WITHOUT the `sigma` dep the
-		// boundary's own tests inject: a supplier that resolved the cache once would serve
-		// the pre-seed orphan for the life of the process while live commits landed in the
-		// current one.
+		// An entrypoint installs the boundary at extension load, before the first `session_start`
+		// rebinds the cache. writeBoundary's default supplier is `() => stateCommitCache().latest()`;
+		// this drives it without the `sigma` dep so the supplier must resolve the current binding.
 		const written: Array<{ messages: unknown[]; options: Record<string, unknown> }> = [];
 		const pi = {
 			on: () => {},
@@ -600,7 +548,7 @@ describe("Σ selection", () => {
 				written.push({ messages, options: options as Record<string, unknown> }),
 		};
 
-		// …then a session_start rebinds, and only afterwards does the agent commit.
+		// A session_start rebinds, then the agent commits.
 		seedStateCommitCache({ sessionManager: { getSessionId: () => "S1", getBranch: () => [] } });
 		stateCommitCache().observe(toolResultEvent("c1", committed(4)));
 
@@ -623,10 +571,8 @@ describe("Σ selection", () => {
 	});
 
 	test("nothing can hold a binding that goes stale — every accessor resolves current", () => {
-		// The question one level up, asked directly rather than site by site: is there any
-		// value a caller can capture that survives a rebinding? The façade, and each of its
-		// methods pulled off it, are the only handles on the process cache, and all of them
-		// read the current binding at CALL time.
+		// The façade and each of its methods are the only handles on the process cache; all read
+		// the current binding at call time.
 		const facade = stateCommitCache();
 		const latest = stateCommitCache().latest;
 		const observe = stateCommitCache().observe;
@@ -646,19 +592,14 @@ describe("Σ selection", () => {
 	});
 
 	test("the accessor hands out no way to rebind, reassign or edit — at RUNTIME, not by type", () => {
-		// A TYPE narrowing is not a barrier. An earlier version returned the binding itself
-		// and merely typed it down, so `stateCommitCache().observe = …` both compiled and
-		// worked — which recreates the orphan-cache defect one layer out, and
-		// `latest().text` could be edited after the fact to rewrite the agent's durable
-		// state. These are the runtime properties, checked as runtime.
+		// These are runtime properties, not type-level ones.
 		const facade = stateCommitCache();
 
-		// The binding's own controls are not properties of what callers get.
+		// The binding's own controls are absent from the view.
 		expect("rebind" in facade, "callers can replace the cache and its identity").toBe(false);
 		expect("sessionId" in facade).toBe(false);
 
-		// ESM is strict mode, so assigning to a frozen property throws rather than silently
-		// doing nothing.
+		// ESM is strict mode, so assigning to a frozen property throws.
 		expect(Object.isFrozen(facade)).toBe(true);
 		const orphan = newStateCommitCache();
 		expect(() => {
@@ -668,7 +609,7 @@ describe("Σ selection", () => {
 			(facade as { latest: unknown }).latest = orphan.latest;
 		}).toThrow(TypeError);
 
-		// And the cached record is not editable in place.
+		// The cached record is not editable in place.
 		facade.observe(toolResultEvent("c1", committed(4)));
 		const record = facade.latest()!;
 		expect(Object.isFrozen(record)).toBe(true);
@@ -677,8 +618,7 @@ describe("Σ selection", () => {
 		}, "Σ's bytes could be rewritten after the fact").toThrow(TypeError);
 		expect(facade.latest()?.text).toBe(committed(4));
 
-		// The exported FACTORY carries the same contract: a caller holding a cache of its
-		// own has a reassigned `observe` as the same orphan one scope down.
+		// The exported factory returns a frozen cache too.
 		const own = newStateCommitCache();
 		expect(Object.isFrozen(own)).toBe(true);
 		expect(() => {
@@ -725,9 +665,7 @@ describe("the transcript record", () => {
 	});
 
 	test("re-homes Σ's document as the payload's OWN BYTES, verbatim", () => {
-		// Not a reserialization. An MCP-backed backend caps the document's exact canonical
-		// bytes and preserves arbitrary-precision numbers; a JSON.parse round trip survives
-		// neither, so what reaches the prompt is sliced, not rebuilt.
+		// The document is sliced from the payload, not reserialized.
 		const sigma = sigmaOf("c1", committed(4))!;
 		const rehomed = sigmaMessage(sigma, 1).content as string;
 		const doc = rehomed.slice(stateWindowPreamble("4").length);
@@ -737,10 +675,7 @@ describe("the transcript record", () => {
 	});
 
 	test("extraction is indifferent to how the payload was rendered", () => {
-		// A backend can switch from indented to compact rendering and nothing here would
-		// notice; keying on isError rather than on the text keeps that true, and the SLICED
-		// doc is whatever the rendering actually contained — the bytes are carried, not
-		// normalized.
+		// The sliced doc is whatever rendering the payload used; bytes are not normalized.
 		const doc = { objective: "ship the core", step: 1 };
 		const payload = { version: 1, doc };
 		expect(sigmaOf("c1", JSON.stringify(payload))?.doc).toBe(JSON.stringify(doc));

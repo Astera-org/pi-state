@@ -1,13 +1,10 @@
-// The standalone pi extension entrypoint: registers `state_get` and `state_commit` as
-// LOCAL pi tools backed by the file backend (`../backend`), and installs the transcript boundary
-// (`../stateboundary`). No MCP `connect()`, no receipt file, no external provider
-// registration, no logprobs capture — this extension's whole job is Σ, alone.
+// The pi extension entrypoint: registers `state_get` and `state_commit` as local pi tools
+// backed by the file backend (`../backend`), and installs the transcript boundary
+// (`../stateboundary`).
 //
-// The two tools are registered under their BARE names (`state_get`, `state_commit`), not
-// MCP-prefixed: there is no MCP server here to prefix a name after, and
-// `STATE_COMMIT_TOOL_NAMES` (statewindow.ts) already recognizes the bare name as one of
-// the two spellings a `state_commit` result may arrive under, so the Σ cache and the
-// boundary need no change to observe a local tool's results.
+// The tools are registered under their bare names (`state_get`, `state_commit`), one of
+// the spellings `STATE_COMMIT_TOOL_NAMES` (statewindow.ts) recognizes for a
+// `state_commit` result.
 
 import {
 	type DocObject,
@@ -32,14 +29,12 @@ import { stateWindowOptionsFromEnv } from "./env.js";
 import { DEFAULT_SCHEMA_PATH, loadSchemaFile } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
 
-/** Where the state file lives, relative to pi's working directory, unless overridden —
- * beside the schema file `loadschema.ts`'s DEFAULT_SCHEMA_PATH names, under the one
- * directory this extension owns. */
+/** Default state file location, relative to pi's working directory; beside
+ * `loadschema.ts`'s DEFAULT_SCHEMA_PATH. */
 export const DEFAULT_STATE_PATH = ".pi-state/state.json";
 
 // --- the slice of pi's extension API this entrypoint depends on -------------------
-// Declared structurally, so this file typechecks and unit-tests with no `pi` package
-// installed.
+// Declared structurally; this package has no `pi` dependency.
 
 export interface PiTextContent {
 	type: "text";
@@ -81,15 +76,11 @@ export interface PiStateOptions {
 
 // --- patch conversion ---------------------------------------------------------------
 //
-// pi coerces a tool call's arguments against the JSON Schema `parameters` advertises
-// (typebox/`coerceWithJsonSchema`) BEFORE `execute` is reached, so what arrives here is
-// already a plain parsed JS value — a JS `number`, not the exact source digits
-// `agentstate`'s own parser keeps. THIS IS A REAL, DOCUMENTED GAP: an MCP `state_commit`
-// backed by `json.RawMessage` straight off the wire lets an arbitrary-precision number
-// survive it exactly; a local pi tool's arguments have already been through one lossy JS
-// round trip by the time any extension sees them, and no pi extension API hands back the
-// raw bytes to undo that. `String(v)` is the best available rendering of what pi already
-// parsed — see the README.
+// pi coerces a tool call's arguments against the advertised JSON Schema before `execute`
+// runs, so the patch arrives as an already-parsed JS value: a JS `number`, not the exact
+// source digits `agentstate`'s parser keeps. Arbitrary-precision numbers therefore lose
+// precision before this code sees them, and a number is stored as `String(v)` of the
+// parsed value. See the README.
 
 function toDocValue(v: unknown): DocValue {
 	if (v === null) return null;
@@ -169,16 +160,12 @@ function stateCommitTool(schema: Schema, statePath: string): PiToolDefinition {
 }
 
 /**
- * Install the standalone state loop: register the two tools, wire the file backend as
- * their implementation, and install the transcript boundary.
+ * Installs the state loop: registers the two tools backed by the file backend and
+ * installs the transcript boundary.
  *
- * Refuses LOUDLY — throws, rather than the boundary ladder's usual quiet log-and-skip —
- * when this `pi` exposes no `replaceTranscript`. Every other reason `installStateBoundary`
- * declines to install (the kill switch off, a bad cycle count) is a legitimate
- * configuration choice on a `pi` that COULD run the loop; a missing `replaceTranscript`
- * means this host fundamentally cannot, no matter how it is configured, so this checks it
- * before doing anything else — before the schema file is even read — rather than letting
- * the boundary's own installer discover it later and log it as just another off switch.
+ * Throws when `pi` exposes no `replaceTranscript`. The check runs first, before the
+ * schema file is read. (`installStateBoundary` only logs and skips for its other
+ * decline reasons, such as the kill switch or an invalid cycle count.)
  */
 export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = {}): Promise<void> {
 	if (typeof pi.replaceTranscript !== "function") {
@@ -190,23 +177,20 @@ export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = 
 	const schemaPath = opts.schemaPath ?? DEFAULT_SCHEMA_PATH;
 	const statePath = opts.statePath ?? DEFAULT_STATE_PATH;
 	const schema = await loadSchemaFile(schemaPath);
-	// Captured once, before anything below ever assigns to schema.maxStateBytes: auto
-	// mode must defer to what the schema FILE itself declared, not to a value this
-	// entrypoint already substituted in on an earlier, less-informed resolution (see
-	// applyAutoMaxStateBytes).
+	// Captured before anything assigns schema.maxStateBytes; applyAutoMaxStateBytes needs
+	// the value the schema file declared.
 	const declaredMaxStateBytes = schema.maxStateBytes;
 	const env = opts.env ?? process.env;
 
-	// Best-effort immediate resolution: the only source available before any session has
-	// started is the env-var stopgap (autocap.ts) — there is no live model yet to ask.
+	// Install-time resolution: before a session starts, only the env var is available.
 	applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokensFromEnv(env), log);
 
 	pi.registerTool(stateGetTool(schema, statePath));
 	pi.registerTool(stateCommitTool(schema, statePath));
 
-	// BEFORE the boundary's own handler, so the cache has already observed a result by the
-	// time the boundary asks what Σ is — both are `tool_result` handlers pi runs in
-	// registration order (see stateboundary.ts's `installStateBoundary` doc comment).
+	// Registered before the boundary: both are `tool_result` handlers run in registration
+	// order, and the cache must observe a result before the boundary reads Σ (see
+	// stateboundary.ts's `installStateBoundary`).
 	installStateCommitCache(pi);
 	const options = stateWindowOptionsFromEnv(env);
 	const record = (data: Parameters<typeof recordStateWindowIntoTranscript>[1]) =>
@@ -214,8 +198,7 @@ export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = 
 	installStateBoundary(pi, options, record, { log });
 	pi.on("session_start", (_event, ctx) => {
 		seedStateCommitCache(ctx, log);
-		// A live contextWindow, once a session has a model, supersedes the install-time
-		// env-var guess above (see applyAutoMaxStateBytes and autocap.ts's header).
+		// A model's contextWindow takes precedence over the env var (see autocap.ts).
 		const contextWindowTokens = contextWindowFromModelHolder(ctx) ?? contextWindowTokensFromEnv(env);
 		applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokens, log);
 	});

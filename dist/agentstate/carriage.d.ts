@@ -3,7 +3,7 @@ import { type Schema } from "./schema.js";
 export interface Carriage {
     /** The schema's own key set. */
     declared: string[];
-    /** declared and notCarried partition Declared. */
+    /** `carried` and `notCarried` partition `declared`. */
     carried: string[];
     notCarried: string[];
     /** A subset of carried: the carried keys whose value says nothing. */

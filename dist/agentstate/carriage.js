@@ -1,5 +1,5 @@
-// A READING of a stored document against its schema, not a verdict on
-// whether it's true.
+// Reads a stored document against its schema: which declared keys the document carries,
+// which of those are empty, and which document keys the schema does not declare.
 import { isPlainDocObject } from "./json.js";
 import { declaredKeys, unmarshal } from "./schema.js";
 /** Reports an empty carriage: the schema asked for keys and the document holds

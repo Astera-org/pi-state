@@ -1,29 +1,23 @@
-// Σ storage as a JSON file in pi's working directory — a standalone compare-and-set
-// backend with no external database. Read, merge (agentstate's own `merge`), write, a
-// version counter, and a compare-and-set that refuses a stale commit rather than
-// overwriting one.
+// Σ storage as a JSON file in pi's working directory: read, merge (agentstate's `merge`),
+// write, a version counter, and a compare-and-set that refuses a stale commit.
 //
-// CONCURRENCY. Two `pi` sessions pointed at the same working directory must not be able
-// to interleave a write: a reader always sees either the previous complete file or the
-// next complete one, and a stale commit is refused rather than silently lost. Both
-// properties come from ONE mechanism — a fixed temp path created with an exclusive
-// (O_EXCL) flag, written, then renamed onto the real path:
+// CONCURRENCY. Two `pi` sessions may share a working directory. A reader sees either the
+// previous complete file or the next complete one, and a stale commit is refused rather
+// than lost. Both properties come from one mechanism: a fixed temp path created with an
+// exclusive (O_EXCL) flag, written, then renamed onto the real path.
 //
-//   - the rename is atomic, so a concurrent reader never observes a torn write;
-//   - the temp path's O_EXCL create doubles as the mutex a compare-and-set needs. Two
-//     commits racing against the same stale version both open the SAME temp path; only
-//     one `open(..., "wx")` can succeed at a time, so the loser blocks (retrying) until
-//     the winner has renamed its write away and freed the path. By the time the loser
-//     gets in, it re-reads the current version under the lock and finds it has moved —
-//     a proper stale-version refusal, never a second writer clobbering the first.
+//   - The rename is atomic, so a reader never observes a torn write.
+//   - The exclusive create is the mutex for the compare-and-set. Concurrent commits open
+//     the same temp path and only one `open(..., "wx")` succeeds at a time; the others
+//     retry until the winner has renamed the file away. A waiting commit then re-reads
+//     the current version under the lock and, if it has moved, is refused as stale.
 //
-// No second lock file is needed: the write path IS the mutex.
+// There is no separate lock file.
 import { open, readFile, rename, unlink } from "node:fs/promises";
 import { marshal, merge, unmarshal } from "../agentstate/index.js";
 import { rawJsonMember } from "../stateboundary/statewindow.js";
 /** The compare-and-set refusal: a commit decided against a version that has since
- * changed. Worded so an agent's error-handling does not depend on which backend sits
- * underneath it. */
+ * changed. */
 export class StaleStateVersionError extends Error {
     constructor(expectedVersion, storedVersion) {
         super(`commit named version ${expectedVersion} and the stored version is ${storedVersion}: this agent state commit was decided against a version that has since changed — read the current state and retry`);
@@ -45,10 +39,9 @@ function parseStoredText(text) {
         return null;
     }
 }
-/** Reads the state file, or the "before the first commit" shape `state_get` documents
- * when it is missing OR corrupt: `exists: false, version: 0, doc: {}`. A file this
- * backend never wrote (truncated, hand-edited, from an incompatible version) is not
- * distinguished from a missing one — both mean there is nothing yet to trust. */
+/** Reads the state file. A missing or corrupt file (truncated, hand-edited, or not in
+ * this backend's format) yields the "before the first commit" shape:
+ * `exists: false, version: 0, doc: {}`. */
 export async function readFileState(path) {
     let text;
     try {
@@ -70,10 +63,10 @@ const LOCK_TIMEOUT_MS = 5000;
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
-/** Applies `patch` to the document at `path` under `schema`, refusing if `expectVersion`
- * is not the stored version (a first commit must name 0, same as an absent file). Every
- * refusal `merge` itself can raise (unknown key, type mismatch, over the byte cap, ...)
- * propagates unchanged; this layer adds only the compare-and-set and the write. */
+/** Applies `patch` to the document at `path` under `schema`, refusing with
+ * StaleStateVersionError if `expectVersion` is not the stored version (a first commit
+ * must name 0). Refusals raised by `merge` propagate unchanged. Throws if the write lock
+ * cannot be acquired within LOCK_TIMEOUT_MS. */
 export async function commitFileState(path, schema, patch, expectVersion) {
     const tmpPath = `${path}.tmp`;
     const deadline = Date.now() + LOCK_TIMEOUT_MS;

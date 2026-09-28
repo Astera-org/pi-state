@@ -1,10 +1,4 @@
-// A declared key can say what it HOLDS via `desc`.
-//
-// No two-release rollback contract is tested here (a previous server binary's decoder
-// must still refuse a schema carrying `desc`, checked by running that old decoder): this
-// package is not a deployed service with an "old" binary anywhere, so there is nothing
-// for that story to be about. What's tested below is the schema/prose behaviour itself —
-// desc storage, its byte ceiling, and the two renderings.
+// Per-key `desc` prose: storage, byte ceiling, and the guide and summary renderings.
 
 import { expect, test } from "vitest";
 import { declaredGuide, declaredSummary, described, MAX_DESC_BYTES, parseSchema } from "../src/agentstate/index.js";
@@ -18,8 +12,7 @@ test("a schema carries per-key prose", () => {
 	expect(described(bare)).toBe(false);
 });
 
-// The prose ships in the system prompt of every request of a bounded run, so it is a
-// clause with a ceiling — not a second place to write a prompt.
+// `desc` is included in the system prompt, so it is capped at MAX_DESC_BYTES.
 test("prose over the ceiling is refused", () => {
 	const long = "x".repeat(MAX_DESC_BYTES + 1);
 	let error: unknown;
@@ -36,8 +29,7 @@ test("prose over the ceiling is refused", () => {
 	).not.toThrow();
 });
 
-// What each rendering is FOR: the guide is read by an agent deciding what to write; the
-// summary is quoted back by a refusal to an agent that already has the guide.
+// The guide includes each key's `desc`; the summary lists keys and types only.
 test("the guide carries the prose and the summary stays terse", () => {
 	const schema = parseSchema(
 		`{"keys":{` +
@@ -50,12 +42,12 @@ test("the guide carries the prose and the summary stays terse", () => {
 	for (const want of [
 		"files (object) — path → why it was touched",
 		"objective (string) — what the change must achieve",
-		// A key with no prose still renders, with its type and nothing invented.
+		// A key without `desc` renders its type only.
 		"notes (list[3])",
 	]) {
 		expect(guide).toContain(want);
 	}
-	// Sorted, like every other rendering of the key set.
+	// Keys are sorted.
 	expect(guide.startsWith("files (object)")).toBe(true);
 
 	const summary = declaredSummary(schema);

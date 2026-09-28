@@ -1,5 +1,4 @@
-// Tests for agentstate's schema parsing and merge behavior. Comments are kept here only
-// where they explain something not obvious from the assertion.
+// Tests for agentstate's schema parsing and merge behavior.
 
 import { describe, expect, test } from "vitest";
 import {
@@ -26,13 +25,11 @@ test("merge sets and replaces", () => {
 	const doc = patch(`{"objective":"old","step":1}`);
 	const got = merge(doc, patch(`{"objective":"new","done":true,"files":["a.go"]}`), schema());
 	expect(render(got)).toBe(`{"done":true,"files":["a.go"],"objective":"new","step":1}`);
-	// The inputs are untouched — a caller that refuses the result must still hold the
-	// document it started from.
+	// merge does not mutate its inputs.
 	expect(render(doc)).toBe(`{"objective":"old","step":1}`);
 });
 
-// A JSON null DELETES its key. Storing null instead would let a working set
-// accumulate dead keys that keep paying their bytes in every request.
+// A JSON null deletes its key.
 test("merge: null deletes a key", () => {
 	const doc = patch(`{"objective":"x","done":false,"files":["a"]}`);
 	const got = merge(doc, patch(`{"done":null,"files":null}`), schema());
@@ -45,21 +42,21 @@ test("merge: null on an absent key is a no-op", () => {
 	expect(render(got)).toBe(`{}`);
 });
 
-// Objects merge DEEP, and null deletes at depth too.
+// Objects merge deeply; null deletes at any depth.
 test("merge: objects are deep", () => {
 	const doc = patch(`{"findings":{"a":1,"b":{"c":2,"d":3}}}`);
 	const got = merge(doc, patch(`{"findings":{"b":{"c":9,"d":null},"e":"new"}}`), schema());
 	expect(render(got)).toBe(`{"findings":{"a":1,"b":{"c":9},"e":"new"}}`);
 });
 
-// An object patched onto a non-object value replaces it rather than failing.
+// An object patched onto a non-object value replaces it.
 test("merge: object onto scalar replaces", () => {
 	const doc = { findings: "not an object" };
 	const got = merge(doc, patch(`{"findings":{"a":1}}`), schema());
 	expect(render(got)).toBe(`{"findings":{"a":1}}`);
 });
 
-// Arrays REPLACE. Appending would be the one semantics that turns Sigma into a log.
+// Arrays replace; they are not appended.
 test("merge: lists replace rather than append", () => {
 	const doc = patch(`{"files":["a","b"]}`);
 	const got = merge(doc, patch(`{"files":["c"]}`), schema());
@@ -72,21 +69,21 @@ test("merge: an empty patch is a no-op", () => {
 	expect(render(got)).toBe(render(doc));
 });
 
-// The closed key set. An undeclared key is refused, and the error NAMES it.
+// An undeclared key is refused, and the error names it.
 test("merge: refuses an undeclared key", () => {
 	expect(() => merge(undefined, patch(`{"history":["a"]}`), schema())).toThrow(UnknownKeyError);
 	expect(() => merge(undefined, patch(`{"history":["a"]}`), schema())).toThrow(/"history"/);
-	// It must not have been kept OR dropped silently.
+	// Also refused when the stored document is non-empty.
 	expect(() => merge({ objective: "x" }, patch(`{"history":["a"]}`), schema())).toThrow();
 });
 
-// The closed key set governs the PATCH; a key the schema no longer declares survives
-// in the stored document rather than being pruned.
+// The closed key set applies to the patch only; a stored key the schema does not declare
+// is kept.
 test("merge: carries undeclared stored keys through", () => {
 	const doc = { retired: "value from an older schema", objective: "x" };
 	const got = merge(doc, patch(`{"objective":"y"}`), schema());
 	expect(render(got)).toBe(`{"objective":"y","retired":"value from an older schema"}`);
-	// And the agent cannot null it out, which is the cost this behaviour accepts.
+	// Such a key cannot be deleted by patch.
 	expect(() => merge(doc, patch(`{"retired":null}`), schema())).toThrow(UnknownKeyError);
 });
 
@@ -113,8 +110,7 @@ test("merge: refuses an over-long list", () => {
 	expect((error as Error).message).toContain("at most 3");
 });
 
-// An array nested inside an object value is the append-only log the schema cannot
-// bound, so it is refused wherever it appears.
+// An array nested inside an object value is refused at any depth.
 describe("merge: refuses arrays nested in objects", () => {
 	test.each([
 		["directly under an object key", `{"findings":{"log":["a"]}}`],
@@ -126,7 +122,7 @@ describe("merge: refuses arrays nested in objects", () => {
 	});
 });
 
-// The cap is enforced on the MERGED result, not on the patch.
+// The cap applies to the merged result, not to the patch.
 test("merge: refuses over cap on the merged result", () => {
 	const doc = { objective: "x".repeat(200) };
 	const small = patch(`{"findings":{"note":"${"y".repeat(100)}"}}`);
@@ -146,7 +142,7 @@ test("merge: applies the default cap", () => {
 	expect(() => merge(undefined, { objective: "x".repeat(DEFAULT_MAX_STATE_BYTES + 1) }, s)).toThrow(TooLargeError);
 });
 
-// The zero schema declares nothing, so it refuses every non-empty patch.
+// The zero schema declares no keys, so every non-empty patch is refused.
 test("the zero schema declares nothing", () => {
 	expect(() => merge(undefined, { anything: "x" }, { keys: {} })).toThrow(UnknownKeyError);
 	const got = merge({}, {}, { keys: {} });
@@ -154,8 +150,7 @@ test("the zero schema declares nothing", () => {
 });
 
 test("numbers round trip exactly", () => {
-	// Decoding through a JS `number` would turn this into 1000000000000000000 (and 1e6
-	// for a plain million), which is a different value than the agent stored.
+	// Values are not decoded through a JS `number`, which would give 1000000000000000000.
 	const got = merge(undefined, patch(`{"step":1000000000000000002}`), schema());
 	expect(render(got)).toBe(`{"step":1000000000000000002}`);
 	expect(got.step).toBeInstanceOf(JsonNumber);
@@ -189,9 +184,8 @@ test("parseSchema", () => {
 	expect(Object.keys(empty.keys)).toHaveLength(0);
 });
 
-// There is no ceiling on maxStateBytes: an operator sizing Σ against a large context
-// window may declare a cap well above the old fixed 64 KiB limit.
-test("parseSchema accepts a maxStateBytes above the old 64 KiB ceiling", () => {
+// maxStateBytes has no upper bound.
+test("parseSchema accepts a maxStateBytes above 64 KiB", () => {
 	const s = parseSchema(`{"maxStateBytes":1048576,"keys":{"a":{"type":"string"}}}`);
 	expect(schemaCap(s)).toBe(1048576);
 });
@@ -200,15 +194,13 @@ test("parseSchema reads autoMaxStateBytesPercent on a schema with no maxStateByt
 	const s = parseSchema(`{"autoMaxStateBytesPercent":70,"keys":{"a":{"type":"string"}}}`);
 	expect(s.maxStateBytes).toBeUndefined();
 	expect(s.autoMaxStateBytesPercent).toBe(70);
-	// Not yet resolved into a concrete maxStateBytes: agentstate cannot know the context
-	// window, so schemaCap still falls back to DEFAULT_MAX_STATE_BYTES — the last resort
-	// — until a caller that does know it (src/entrypoint) resolves auto sizing.
+	// agentstate does not know the context window; schemaCap returns DEFAULT_MAX_STATE_BYTES
+	// until a caller resolves auto sizing.
 	expect(schemaCap(s)).toBe(DEFAULT_MAX_STATE_BYTES);
 });
 
-// Auto sizing is the DEFAULT for a schema that declares no maxStateBytes, not an
-// opt-in — so a schema with neither field at all is exactly as much "auto" as one that
-// declares a percent, just at DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65).
+// A schema with neither maxStateBytes nor autoMaxStateBytesPercent uses auto sizing at
+// DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65).
 test("a schema with no maxStateBytes and no autoMaxStateBytesPercent is still auto, at the default percent", () => {
 	const s = parseSchema(`{"keys":{"a":{"type":"string"}}}`);
 	expect(s.maxStateBytes).toBeUndefined();
@@ -222,8 +214,7 @@ test("parseSchema refuses an autoMaxStateBytesPercent outside 1-100", () => {
 	}
 });
 
-// The growth-shaped schema is refused at AUTHORING time: an unbounded list cannot be
-// written down, so the "history array" shape has nowhere to live.
+// Schemas with an unbounded list, or other invalid declarations, are refused at parse time.
 describe("parseSchema refuses an unbounded list and other mistakes", () => {
 	test.each([
 		["a list with no maxItems", `{"keys":{"history":{"type":"list"}}}`],
@@ -246,8 +237,7 @@ describe("parseSchema refuses an unbounded list and other mistakes", () => {
 	});
 });
 
-// Merge revalidates the schema rather than trusting its caller: a hand-built Schema
-// never went through parseSchema.
+// merge validates the schema itself, since a hand-built Schema bypasses parseSchema.
 test("merge revalidates the schema", () => {
 	const bad = { keys: { history: { type: "list" as const } } };
 	expect(() => merge(undefined, { history: ["a"] }, bad)).toThrow(AgentStateSchemaError);
@@ -256,7 +246,7 @@ test("merge revalidates the schema", () => {
 describe("resolveAutoMaxStateBytes", () => {
 	test("the byte-per-token math: contextWindowTokens * bytesPerToken * percent / 100, floored", () => {
 		expect(resolveAutoMaxStateBytes(50, 1000, 4)).toBe(2000);
-		// Not evenly divisible — the result floors rather than rounds.
+		// The result is floored.
 		expect(resolveAutoMaxStateBytes(65, 1000, 4)).toBe(2600);
 		expect(resolveAutoMaxStateBytes(33, 1000, 4)).toBe(1320);
 	});
@@ -270,10 +260,8 @@ describe("resolveAutoMaxStateBytes", () => {
 		expect(resolveAutoMaxStateBytes(50, 1000, 8)).toBe(4000);
 	});
 
-	// DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65) is the percent a caller should pass when
-	// a schema turns on auto mode but does not say how much — resolveAutoMaxStateBytes
-	// itself never defaults percent, so this is what "the default-percent case" looks
-	// like at the call site.
+	// resolveAutoMaxStateBytes has no default percent; callers pass
+	// DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT.
 	test("the default-percent case: a caller passing DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT", () => {
 		expect(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT).toBe(65);
 		expect(resolveAutoMaxStateBytes(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, 200000)).toBe(520000);

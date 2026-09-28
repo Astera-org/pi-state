@@ -1,15 +1,13 @@
-// Adapts an agentstate `Schema` into the JSON Schema `state_commit` advertises for its
-// `patch` argument: one property per declared key, each type unioned with `null` (a null
-// value is how `merge` DELETES a key, so the union is not decoration — see merge.ts), a
-// list also carrying `maxItems`, and `additionalProperties: false` for the closed key set.
-//
-// There is no operator-facing action-log line in a standalone extension, so this surface
-// asks only for what the file backend's compare-and-set needs — `patch` and `version`.
+// Adapts an agentstate `Schema` into the JSON Schema `state_commit` advertises: a `patch`
+// argument with one property per declared key, each type unioned with `null` (null
+// deletes a key; see merge.ts), a list also carrying `maxItems`, and
+// `additionalProperties: false` for the closed key set; plus the `version` argument, the
+// file backend's compare-and-set token.
 
 import { declaredKeys, Kind, type Schema } from "../agentstate/index.js";
 
-/** Every JSON type a list ITEM may take — the five minus "array": an array may only
- * appear at a declared list key, never nested inside one (agentstate's NestedListError). */
+/** The JSON types a list item may take: every kind except array, since an array may
+ * appear only at a declared list key (agentstate's NestedListError). */
 const LIST_ITEM_TYPES = ["string", "number", "boolean", "object", "null"];
 
 function jsonSchemaType(kind: Schema["keys"][string]["type"]): string {
