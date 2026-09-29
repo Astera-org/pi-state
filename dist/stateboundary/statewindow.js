@@ -116,6 +116,10 @@ export function resolveStateWindow(options) {
 export function isStateCommitToolName(name) {
     return typeof name === "string" && STATE_COMMIT_TOOL_NAMES.includes(name);
 }
+const STATE_GET_TOOL_NAMES = ["state_get", "mcp__sproot__state_get"];
+export function isStateGetToolName(name) {
+    return typeof name === "string" && STATE_GET_TOOL_NAMES.includes(name);
+}
 /** A tool result's payload as text, from a string, an array of parts, or any other JSON value. */
 export function toolResultText(content) {
     if (typeof content === "string")

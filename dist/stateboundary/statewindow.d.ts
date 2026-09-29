@@ -87,6 +87,7 @@ export declare function stateWindowSetting(options: StateWindowOptions): StateWi
 /** The mode's configuration, or null when it is off (the default, kill-switched, or malformed). */
 export declare function resolveStateWindow(options: StateWindowOptions): StateWindowConfig | null;
 export declare function isStateCommitToolName(name: unknown): boolean;
+export declare function isStateGetToolName(name: unknown): boolean;
 /** A tool result's payload as text, from a string, an array of parts, or any other JSON value. */
 export declare function toolResultText(content: unknown): string;
 /** One finalized `state_commit` result that pi reported successful. */

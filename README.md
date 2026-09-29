@@ -222,6 +222,9 @@ written relative to the working directory.
     count includes the current message and resets on a message with a commit or a new
     prompt; `1` is equivalent to `every`).
 
+  `state_get` calls are never blocked, and a message containing only `state_get` calls
+  does not count toward K.
+
   Run it: `PI_STATE_MODE=paper pi -e dist/entrypoint/index.js`.
 
 **Auto sizing.** A schema that declares no `maxStateBytes` is sized as a percentage of

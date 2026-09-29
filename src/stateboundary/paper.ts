@@ -1,6 +1,6 @@
 /**
  * Paper mode: the prompt is rebuilt on every model call as [Σ, newest user turn, last N
- * complete tool cycles], and every action must arrive with a `state_commit`. Nothing
+ * complete tool cycles], and every action must arrive with a `state_commit`; `state_get` is exempt. Nothing
  * here calls `replaceTranscript`; pi's transcript is left as is and only the per-call
  * context is projected.
  *
@@ -11,6 +11,7 @@
 import { type BoundaryAPI, type BoundaryDeps, boundaryMessages } from "./stateboundary.js";
 import {
 	isStateCommitToolName,
+	isStateGetToolName,
 	quoted,
 	type Sigma,
 	type StateWindowOff,
@@ -45,7 +46,7 @@ export const PAPER_CONTRACT =
 	"Everything else has been discarded.\n\n" +
 	"Persist everything you will need later (plans, findings, progress, file paths, decisions) with state_commit; nothing else survives. " +
 	"state_commit merges a patch onto Σ; a null value deletes a key. Pass the version shown in Σ.\n\n" +
-	"Call state_commit in the same message as each action (every other tool call).";
+	"Call state_commit in the same message as each action (every other tool call except state_get).";
 
 export const PAPER_COMMIT_REQUIRED_REASON = "include a state_commit call in the same message as this action";
 
@@ -160,14 +161,15 @@ export function installPaperMode(pi: BoundaryAPI, config: PaperConfig, deps: Pap
 
 	pi.on("message_end", (event) => {
 		const names = toolCallNames((event as { message: PiMessage }).message);
-		if (names === null) return undefined;
+		if (names === null || names.every(isStateGetToolName)) return undefined;
 		latestHasCommit = names.some(isStateCommitToolName);
 		commitless = latestHasCommit ? 0 : commitless + 1;
 		return undefined;
 	});
 
 	pi.on("tool_call", (event) => {
-		if (latestHasCommit || isStateCommitToolName((event as { toolName?: unknown }).toolName)) return undefined;
+		const toolName = (event as { toolName?: unknown }).toolName;
+		if (latestHasCommit || isStateCommitToolName(toolName) || isStateGetToolName(toolName)) return undefined;
 		if (requireCommit !== "every" && commitless < requireCommit) return undefined;
 		return { block: true, reason: PAPER_COMMIT_REQUIRED_REASON };
 	});
