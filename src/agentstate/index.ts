@@ -22,6 +22,7 @@ export { canonicalNumber, MAX_NUMBER_BYTES } from "./number.js";
 export type { Field, Schema } from "./schema.js";
 export {
 	canonicalize,
+	DEFAULT_AUTO_MAX_STATE_BYTES_CEILING,
 	DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT,
 	DEFAULT_BYTES_PER_TOKEN,
 	DEFAULT_MAX_STATE_BYTES,

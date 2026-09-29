@@ -27,7 +27,11 @@ export const DEFAULT_MAX_STATE_BYTES = 4096;
 
 /** The percent auto sizing uses when a schema declares neither maxStateBytes nor
  * `autoMaxStateBytesPercent`. */
-export const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 65;
+export const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 10;
+
+/** Upper bound, in bytes, on the default auto-sized cap. Not applied when the schema sets
+ * `autoMaxStateBytesPercent`. */
+export const DEFAULT_AUTO_MAX_STATE_BYTES_CEILING = 65536;
 
 /** Approximate bytes of JSON text per token, used to convert a token-denominated context
  * window into a byte-denominated cap. Actual bytes-per-token varies with tokenizer and
@@ -93,7 +97,8 @@ export interface Schema {
 	 * schemaCap. */
 	maxStateBytes?: number;
 	/** The percent (1-100) of the context window auto sizing uses when maxStateBytes is
-	 * absent. Defaults to DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (65).
+	 * absent. Defaults to DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (10), capped at
+	 * DEFAULT_AUTO_MAX_STATE_BYTES_CEILING; an explicit value is not capped.
 	 *
 	 * `agentstate` cannot resolve auto sizing itself. Until a caller that knows the
 	 * context window (`src/entrypoint`) resolves this percent with
