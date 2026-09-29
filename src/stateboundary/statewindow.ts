@@ -173,6 +173,12 @@ export function isStateCommitToolName(name: unknown): boolean {
 	return typeof name === "string" && STATE_COMMIT_TOOL_NAMES.includes(name);
 }
 
+const STATE_GET_TOOL_NAMES: readonly string[] = ["state_get", "mcp__sproot__state_get"];
+
+export function isStateGetToolName(name: unknown): boolean {
+	return typeof name === "string" && STATE_GET_TOOL_NAMES.includes(name);
+}
+
 /** A tool result's payload as text, from a string, an array of parts, or any other JSON value. */
 export function toolResultText(content: unknown): string {
 	if (typeof content === "string") return content;
