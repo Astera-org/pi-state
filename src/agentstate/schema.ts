@@ -138,11 +138,6 @@ export function declaredSummary(schema: Schema): string {
 	return names.map((name) => `${name} ${fieldSpec(schema.keys[name])}`).join(", ");
 }
 
-/** Whether any declared key carries prose. */
-export function described(schema: Schema): boolean {
-	return Object.values(schema.keys).some((f) => (f.desc ?? "").trim() !== "");
-}
-
 function schemaError(message: string): AgentStateSchemaError {
 	return new AgentStateSchemaError(`${message}: invalid agent state schema`);
 }
