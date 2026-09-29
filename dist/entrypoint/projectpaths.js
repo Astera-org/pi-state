@@ -1,6 +1,5 @@
-// Lookup locations shared by `resolveSchema` and `resolveStatePath`: the working
-// directory's `.pi-state/<file>`, then a file under pi's agent directory, scoped to the
-// project and optionally to a session.
+// Home-directory location shared by `resolveSchema` and `resolveStatePath`: a file under
+// pi's agent directory, scoped to the project and optionally to a session.
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -19,17 +18,14 @@ async function projectKey() {
     return createHash("sha256").update(cwd).digest("hex").slice(0, 24);
 }
 /**
- * The lookup locations for `file` (`schema.json` or `state.json`): the path relative to
- * the working directory, and `<agentDir>/pi-state/<projectKey>/[<sessionId>/]<file>`.
+ * The location of `file` (`schema.json` or `state.json`):
+ * `<agentDir>/pi-state/<projectKey>/[<sessionId>/]<file>`.
  * A `sessionId` outside `[A-Za-z0-9][A-Za-z0-9._-]*` throws.
  */
-export async function projectPaths(file, homeDir, sessionId) {
+export async function projectPath(file, homeDir, sessionId) {
     if (sessionId !== undefined && !SESSION_ID.test(sessionId)) {
         throw new Error(`[pi-state] session id ${JSON.stringify(sessionId)} is not usable as a directory name`);
     }
-    return {
-        cwdPath: join(".pi-state", file),
-        homePath: join(agentDir(homeDir), "pi-state", await projectKey(), ...(sessionId ? [sessionId] : []), file),
-    };
+    return join(agentDir(homeDir), "pi-state", await projectKey(), ...(sessionId ? [sessionId] : []), file);
 }
 //# sourceMappingURL=projectpaths.js.map

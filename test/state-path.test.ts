@@ -1,5 +1,5 @@
-// The state path lookup chain: explicit statePath, ./.pi-state/state.json (when it
-// exists), then <agent dir>/pi-state/<key>/<sessionId>/state.json (created when absent).
+// The state path lookup chain: explicit statePath, then
+// <agent dir>/pi-state/<key>/<sessionId>/state.json (created when absent).
 
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { installPiState, type PiExtensionAPI, type PiToolDefinition } from "../src/entrypoint/index.js";
-import { projectPaths } from "../src/entrypoint/projectpaths.js";
+import { projectPath } from "../src/entrypoint/projectpaths.js";
 import { resolveStatePath } from "../src/entrypoint/statepath.js";
 
 function fakePi(): PiExtensionAPI & { tools: Map<string, PiToolDefinition> } {
@@ -21,15 +21,10 @@ function fakePi(): PiExtensionAPI & { tools: Map<string, PiToolDefinition> } {
 	};
 }
 
-async function writeState(root: string, version: number): Promise<void> {
-	await mkdir(join(root, ".pi-state"), { recursive: true });
-	await writeFile(join(root, ".pi-state", "state.json"), `{"version":${version},"doc":{}}`, "utf8");
-}
-
 const SESSION = "session-a";
 const ctxFor = (sessionId: string) => ({ sessionManager: { getSessionId: () => sessionId } });
 
-const scopedHomeState = async (sessionId = SESSION) => (await projectPaths("state.json", homeDir, sessionId)).homePath;
+const scopedHomeState = async (sessionId = SESSION) => projectPath("state.json", homeDir, sessionId);
 
 async function writeHomeState(version: number): Promise<void> {
 	const path = await scopedHomeState();
@@ -88,14 +83,6 @@ describe("state path lookup chain", () => {
 		expect((await get()).version).toBe(1);
 	});
 
-	test("the working-directory file is used when it exists", async () => {
-		await writeState(projectDir, 3);
-		await writeHomeState(7);
-		expect(await resolve()).toBe(".pi-state/state.json");
-		expect(logs[0]).not.toContain(homeDir);
-		expect((await (await installedTools()).get()).version).toBe(3);
-	});
-
 	test("the home file is used when only it exists", async () => {
 		await writeHomeState(7);
 		expect(await resolve()).toBe(await scopedHomeState());
@@ -103,7 +90,6 @@ describe("state path lookup chain", () => {
 	});
 
 	test("an explicit statePath is used unconditionally", async () => {
-		await writeState(projectDir, 3);
 		await writeHomeState(7);
 		const statePath = join(projectDir, "explicit.json");
 		expect(await resolve({ statePath })).toBe(statePath);

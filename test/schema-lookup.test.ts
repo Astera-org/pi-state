@@ -1,4 +1,4 @@
-// The schema lookup chain: explicit schemaPath, ./.pi-state/schema.json,
+// The schema lookup chain: explicit schemaPath,
 // <agent dir>/pi-state/<key>/schema.json, then the built-in default.
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -9,7 +9,7 @@ import { declaredKeys, declaredTypes, MAX_DESC_BYTES } from "../src/agentstate/i
 import { defaultSchema } from "../src/entrypoint/defaultschema.js";
 import { installPiState, type PiExtensionAPI, type PiToolDefinition } from "../src/entrypoint/index.js";
 import { resolveSchema } from "../src/entrypoint/loadschema.js";
-import { projectPaths } from "../src/entrypoint/projectpaths.js";
+import { projectPath } from "../src/entrypoint/projectpaths.js";
 
 const DEFAULT_KEYS = [
 	"active_files",
@@ -35,13 +35,8 @@ function fakePi(): PiExtensionAPI & { tools: Map<string, PiToolDefinition> } {
 
 const schemaJson = (key: string) => JSON.stringify({ keys: { [key]: { type: "string" } } });
 
-async function writeSchema(root: string, body: string): Promise<void> {
-	await mkdir(join(root, ".pi-state"), { recursive: true });
-	await writeFile(join(root, ".pi-state", "schema.json"), body, "utf8");
-}
-
 async function writeHomeSchema(body: string): Promise<void> {
-	const path = (await projectPaths("schema.json", homeDir)).homePath;
+	const path = await projectPath("schema.json", homeDir);
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, body, "utf8");
 }
@@ -85,21 +80,13 @@ describe("schema lookup chain", () => {
 		expect(logs.some((m) => /built-in default/.test(m))).toBe(true);
 	});
 
-	test("the project file wins over the home file", async () => {
-		await writeSchema(projectDir, schemaJson("from_project"));
-		await writeHomeSchema(schemaJson("from_home"));
-		expect(declaredKeys(await resolve())).toEqual(["from_project"]);
-		expect(logs).toEqual([expect.stringContaining(join(".pi-state", "schema.json"))]);
-		expect(logs[0]).not.toContain(homeDir);
-	});
-
 	test("with only a home file, the home file is used", async () => {
 		await writeHomeSchema(schemaJson("from_home"));
 		expect(declaredKeys(await resolve())).toEqual(["from_home"]);
 		expect(logs).toEqual([expect.stringContaining(homeDir)]);
 	});
 
-	test("working directories without a local file each get their own home file", async () => {
+	test("working directories each get their own home file", async () => {
 		await writeHomeSchema(schemaJson("from_first"));
 		const otherDir = await mkdtemp(join(tmpdir(), "pi-state-project-"));
 		try {
@@ -115,24 +102,17 @@ describe("schema lookup chain", () => {
 		}
 	});
 
-	test("an explicit schemaPath that does not exist throws, even when other files exist", async () => {
-		await writeSchema(projectDir, schemaJson("from_project"));
+	test("an explicit schemaPath that does not exist throws, even when a home file exists", async () => {
+		await writeHomeSchema(schemaJson("from_home"));
 		await expect(resolve({ schemaPath: join(projectDir, "nope.json") })).rejects.toThrow(/no schema file at/);
 	});
 
 	test("an explicit schemaPath is used in preference to the lookup chain", async () => {
-		await writeSchema(projectDir, schemaJson("from_project"));
+		await writeHomeSchema(schemaJson("from_home"));
 		const explicit = join(projectDir, "explicit.json");
 		await writeFile(explicit, schemaJson("from_explicit"), "utf8");
 		expect(declaredKeys(await resolve({ schemaPath: explicit }))).toEqual(["from_explicit"]);
 		expect(logs).toEqual([expect.stringContaining(explicit)]);
-	});
-
-	test("a malformed project file throws and does not fall back to the home file or the default", async () => {
-		await writeSchema(projectDir, "{ not json");
-		await writeHomeSchema(schemaJson("from_home"));
-		await expect(resolve()).rejects.toThrow();
-		expect(logs).toEqual([]);
 	});
 
 	test("a malformed home file throws and does not fall back to the default", async () => {
@@ -141,7 +121,7 @@ describe("schema lookup chain", () => {
 	});
 
 	test("the replaceTranscript check still runs before any schema lookup", async () => {
-		await writeSchema(projectDir, "{ not json");
+		await writeHomeSchema("{ not json");
 		const pi = { ...fakePi(), replaceTranscript: undefined };
 		await expect(installPiState(pi, { homeDir })).rejects.toThrow(/replaceTranscript/);
 	});

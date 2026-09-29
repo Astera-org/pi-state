@@ -1,26 +1,11 @@
-// Resolves the state file location, following the lookup chain of `loadschema.ts`'s
-// `resolveSchema`.
-import { access } from "node:fs/promises";
-import { projectPaths } from "./projectpaths.js";
-async function exists(path) {
-    try {
-        await access(path);
-        return true;
-    }
-    catch (err) {
-        if (err.code === "ENOENT")
-            return false;
-        throw err;
-    }
-}
+// Resolves the state file location.
+import { projectPath } from "./projectpaths.js";
 /**
  * Finds the state file, in order:
  *
  * 1. `opts.statePath`, when set.
- * 2. `./.pi-state/state.json`, relative to pi's working directory, when it exists.
- * 3. `<agentDir>/pi-state/<projectKey>/<sessionId>/state.json` (see `projectPaths`),
- *    whether or not it exists: a state file that exists in neither location is created
- *    there, never in the working directory.
+ * 2. `<agentDir>/pi-state/<projectKey>/<sessionId>/state.json` (see `projectPath`),
+ *    whether or not it exists: a missing state file is created there.
  *
  * Logs which location was used.
  */
@@ -30,13 +15,9 @@ export async function resolveStatePath(opts) {
     if (opts.sessionId === undefined) {
         throw new Error("[pi-state] no session id available to locate the state file; set statePath");
     }
-    const { cwdPath, homePath } = await projectPaths("state.json", opts.homeDir, opts.sessionId);
-    if (await exists(cwdPath)) {
-        opts.log(`[pi-state] state: ${cwdPath}`);
-        return cwdPath;
-    }
-    opts.log(`[pi-state] state: ${homePath}`);
-    return homePath;
+    const path = await projectPath("state.json", opts.homeDir, opts.sessionId);
+    opts.log(`[pi-state] state: ${path}`);
+    return path;
 }
 /** `ctx.sessionManager.getSessionId()`, or undefined when `ctx` does not expose it. */
 function sessionIdOf(ctx) {
