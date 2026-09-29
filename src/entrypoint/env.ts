@@ -1,6 +1,7 @@
 // Maps this package's environment variables onto `StateWindowOptions`
 // (src/stateboundary/statewindow.ts), the object that module's fail-closed parsing runs
-// on. A single flag, `PI_STATE_LOOP`, serves as both mode and kill switch.
+// on. `PI_STATE_LOOP` is the kill switch; `PI_STATE_MODE` selects `boundary` or `paper`;
+// `PI_STATE_REQUIRE_COMMIT` sets paper mode's commit enforcement.
 
 import type { PaperOptions, StateWindowOptions } from "../stateboundary/index.js";
 

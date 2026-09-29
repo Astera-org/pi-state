@@ -20,7 +20,7 @@ import {
 } from "./statewindow.js";
 
 /** Cycle depth used in paper mode when N is not configured. */
-export const PAPER_DEFAULT_TOOL_CYCLES = 1;
+const PAPER_DEFAULT_TOOL_CYCLES = 1;
 
 export type StateMode = "boundary" | "paper";
 

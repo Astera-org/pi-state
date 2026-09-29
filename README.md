@@ -238,8 +238,8 @@ An explicit `maxStateBytes` in the schema file always takes precedence over auto
 If neither source resolves, the cap is `DEFAULT_MAX_STATE_BYTES` (4096).
 
 **Installation failures.** In `boundary` mode, `installPiState` checks `replaceTranscript`
-before schema lookup and throws if it is absent; `paper` mode does not check. Unreadable or invalid schema files and a missing
-explicit `schemaPath` also throw. Missing default schema files use the lookup fallback.
+before schema lookup and throws if it is absent; `paper` mode does not check. Unreadable
+or invalid schema files and a missing explicit `schemaPath` also throw. Missing default schema files use the lookup fallback.
 A disabled or invalid kill switch, malformed cycle count, or invalid `PI_STATE_MODE` or
 `PI_STATE_REQUIRE_COMMIT` logs to stderr and skips the mode's handlers.
 

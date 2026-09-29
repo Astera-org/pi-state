@@ -1,7 +1,7 @@
 export type { PairedCycle, PairingRefusal, PairingShape } from "./pairing.js";
 export { pairCycles } from "./pairing.js";
 export type { PaperConfig, PaperDeps, PaperOptions, RequireCommit, StateMode } from "./paper.js";
-export { installPaperMode, PAPER_COMMIT_REQUIRED_REASON, PAPER_CONTRACT, PAPER_DEFAULT_TOOL_CYCLES, paperMessages, paperSetting, stateModeSetting, } from "./paper.js";
+export { installPaperMode, PAPER_COMMIT_REQUIRED_REASON, PAPER_CONTRACT, paperMessages, paperSetting, stateModeSetting, } from "./paper.js";
 export type { BoundaryAPI, BoundaryDeps, BoundaryPlan, StateWindowConfig, StateWindowOff, StateWindowOptions, } from "./stateboundary.js";
 export { boundaryMessages, heldMessages, installStateBoundary, STATE_BOUNDARY_SOURCE, segmentCycles, sigmaMessage, stateBoundaryNotInstalled, writeBoundary, } from "./stateboundary.js";
 export type { CachedStateCommit, Sigma, StateWindowCondition, StateWindowEntryData, StateWindowFailure, StateWindowTally, } from "./statewindow.js";

@@ -11,7 +11,6 @@ export {
 	installPaperMode,
 	PAPER_COMMIT_REQUIRED_REASON,
 	PAPER_CONTRACT,
-	PAPER_DEFAULT_TOOL_CYCLES,
 	paperMessages,
 	paperSetting,
 	stateModeSetting,

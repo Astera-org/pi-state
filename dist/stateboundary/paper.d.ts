@@ -9,8 +9,6 @@
  */
 import { type BoundaryAPI, type BoundaryDeps } from "./stateboundary.js";
 import { type Sigma, type StateWindowOff } from "./statewindow.js";
-/** Cycle depth used in paper mode when N is not configured. */
-export declare const PAPER_DEFAULT_TOOL_CYCLES = 1;
 export type StateMode = "boundary" | "paper";
 /** `every`: each commit-less message blocks. `off`: never. A number K: blocks once K consecutive messages had no commit. */
 export type RequireCommit = "every" | "off" | number;

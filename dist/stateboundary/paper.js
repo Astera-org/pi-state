@@ -10,7 +10,7 @@
 import { boundaryMessages } from "./stateboundary.js";
 import { isStateCommitToolName, quoted, sigmaFromResult, stateCommitCache, stateWindowSetting, } from "./statewindow.js";
 /** Cycle depth used in paper mode when N is not configured. */
-export const PAPER_DEFAULT_TOOL_CYCLES = 1;
+const PAPER_DEFAULT_TOOL_CYCLES = 1;
 export const PAPER_CONTRACT = "You are an execution agent working from a persisted state. You do NOT see earlier turns: " +
     "each model call shows only your durable state Σ (the first message), the user's request, and the latest tool results. " +
     "Everything else has been discarded.\n\n" +

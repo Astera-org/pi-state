@@ -406,6 +406,13 @@ describe("PI_STATE_MODE", () => {
 		expect(logs.some((l) => l.includes("[condition=state-mode fault=yes]"))).toBe(true);
 	});
 
+	test("an invalid mode on a pi without replaceTranscript is logged as a mode refusal, not thrown", async () => {
+		const pi = fakePi({ replaceTranscript: undefined });
+		const logs: string[] = [];
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "papr" }, log: (m) => logs.push(m) });
+		expect(logs.some((l) => l.includes("[condition=state-mode fault=yes]"))).toBe(true);
+	});
+
 	test("an invalid PI_STATE_REQUIRE_COMMIT is refused in paper mode", async () => {
 		for (const bad of ["0", "some", "-2"]) {
 			const pi = fakePi();

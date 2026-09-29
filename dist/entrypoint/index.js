@@ -102,7 +102,7 @@ function stateCommitTool(schema, statePath) {
 export async function installPiState(pi, opts = {}) {
     const env = opts.env ?? process.env;
     const mode = stateModeSetting(env[ENV_STATE_MODE]);
-    if (mode !== "paper" && typeof pi.replaceTranscript !== "function") {
+    if (mode === "boundary" && typeof pi.replaceTranscript !== "function") {
         throw new Error("[pi-state] this pi exposes no replaceTranscript — pi-state cannot bound the prompt on this host, so it refuses to install rather than run a state loop that can never take effect");
     }
     const log = opts.log ?? ((message) => console.error(message));
