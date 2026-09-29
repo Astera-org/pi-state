@@ -3,7 +3,7 @@
 // window, or from the env-var fallback when the model is unavailable.
 
 import { describe, expect, test } from "vitest";
-import { DEFAULT_AUTO_MAX_STATE_BYTES_CEILING, type Schema } from "../src/agentstate/index.js";
+import type { Schema } from "../src/agentstate/index.js";
 import {
 	applyAutoMaxStateBytes,
 	contextWindowFromModelHolder,
@@ -63,16 +63,15 @@ describe("applyAutoMaxStateBytes", () => {
 		const schema = autoSchema();
 		const logs: string[] = [];
 		applyAutoMaxStateBytes(schema, undefined, 100000, (m) => logs.push(m));
-		expect(schema.maxStateBytes).toBe(40000); // 10% of 100000 tokens * 4 bytes/token
+		expect(schema.maxStateBytes).toBe(200000); // 50% of 100000 tokens * 4 bytes/token
 		expect(logs).toHaveLength(1);
-		expect(logs[0]).toContain("40000 bytes");
+		expect(logs[0]).toContain("200000 bytes");
 	});
 
-	test("a 1M-token context window is capped at the absolute ceiling", () => {
+	test("a 1M-token context window is sized at 50% with no ceiling", () => {
 		const schema = autoSchema();
-		applyAutoMaxStateBytes(schema, undefined, 1_000_000, () => {});
-		expect(schema.maxStateBytes).toBe(DEFAULT_AUTO_MAX_STATE_BYTES_CEILING);
-		expect(DEFAULT_AUTO_MAX_STATE_BYTES_CEILING).toBe(65536);
+		applyAutoMaxStateBytes(schema, undefined, 1_048_576, () => {});
+		expect(schema.maxStateBytes).toBe(2097152);
 	});
 
 	test("an explicit autoMaxStateBytesPercent overrides the default", () => {
@@ -107,7 +106,7 @@ describe("applyAutoMaxStateBytes", () => {
 		const log = (m: string) => logs.push(m);
 		applyAutoMaxStateBytes(schema, undefined, 50000, log); // install-time env-var value
 		applyAutoMaxStateBytes(schema, undefined, 100000, log); // live session_start value
-		expect(schema.maxStateBytes).toBe(40000);
+		expect(schema.maxStateBytes).toBe(200000);
 		expect(logs).toHaveLength(2);
 	});
 

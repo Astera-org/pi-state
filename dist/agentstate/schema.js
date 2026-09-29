@@ -13,10 +13,7 @@ function decodeNumberMember(value) {
 export const DEFAULT_MAX_STATE_BYTES = 4096;
 /** The percent auto sizing uses when a schema declares neither maxStateBytes nor
  * `autoMaxStateBytesPercent`. */
-export const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 10;
-/** Upper bound, in bytes, on the default auto-sized cap. Not applied when the schema sets
- * `autoMaxStateBytesPercent`. */
-export const DEFAULT_AUTO_MAX_STATE_BYTES_CEILING = 65536;
+export const DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT = 50;
 /** Approximate bytes of JSON text per token, used to convert a token-denominated context
  * window into a byte-denominated cap. Actual bytes-per-token varies with tokenizer and
  * content. */

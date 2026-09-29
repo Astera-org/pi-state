@@ -225,10 +225,8 @@ written relative to the working directory.
   Run it: `PI_STATE_MODE=paper pi -e dist/entrypoint/index.js`.
 
 **Auto sizing.** A schema that declares no `maxStateBytes` is sized as a percentage of
-the model's context window: `autoMaxStateBytesPercent` (1-100, default 10) percent of the
-context window, at 4 bytes per token. Without `autoMaxStateBytesPercent` the cap is
-`min(contextWindowTokens × 4 × 10%, 65536)` bytes; a schema that sets
-`autoMaxStateBytesPercent` gets `contextWindowTokens × 4 × percent%` with no ceiling.
+the model's context window: `autoMaxStateBytesPercent` (1-100, default 50) percent of the
+context window, at 4 bytes per token: the cap is `contextWindowTokens × 4 × percent%` bytes.
 `src/entrypoint` resolves the context window from
 the first of these sources that answers:
 
