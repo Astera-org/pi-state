@@ -185,10 +185,11 @@ The pi extension. `installPiState` (the module's default export, loaded via
 | --- | --- | --- |
 | `.pi-state/schema.json` (working directory) | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below). Optional | `PiStateOptions.schemaPath` |
 | `~/.pi-state/schema.json` | the same, shared by every project; used when the working directory has none. Optional | `PiStateOptions.homeDir` |
-| `.pi-state/state.json` (working directory) | Σ itself, as `src/backend` reads and writes it | `PiStateOptions.statePath` |
+| `.pi-state/state.json` (working directory) | Σ itself, as `src/backend` reads and writes it; used when it exists | `PiStateOptions.statePath` |
+| `~/.pi-state/state.json` | the same; used when the working directory has none, and where a new state file is created | `PiStateOptions.homeDir` |
 
-With neither schema file, the built-in default applies (see "Configure"). The state file
-is always project-relative, whichever schema is used.
+With neither schema file, the built-in default applies (see "Configure"). A new state
+file is created under the home directory, never in the working directory.
 
 **Environment variables.**
 

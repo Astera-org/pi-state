@@ -32,10 +32,7 @@ import { applyAutoMaxStateBytes, contextWindowFromModelHolder, contextWindowToke
 import { ENV_STATE_MODE, paperOptionsFromEnv, stateWindowOptionsFromEnv } from "./env.js";
 import { resolveSchema } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
-
-/** Default state file location, relative to pi's working directory; beside
- * `loadschema.ts`'s DEFAULT_SCHEMA_PATH. */
-export const DEFAULT_STATE_PATH = ".pi-state/state.json";
+import { resolveStatePath } from "./statepath.js";
 
 // --- the slice of pi's extension API this entrypoint depends on -------------------
 // Declared structurally; this package has no `pi` dependency.
@@ -72,10 +69,11 @@ export interface PiStateOptions {
 	/** An explicit schema file; a missing one is an error. When unset, the schema is looked
 	 * up as described at `loadschema.ts`'s `resolveSchema`. */
 	schemaPath?: string;
-	/** Where `.pi-state/schema.json` is looked up after the working directory. Defaults to
-	 * `os.homedir()`. Exposed for tests. */
+	/** Where `.pi-state/schema.json` and `.pi-state/state.json` are looked up after the
+	 * working directory. Defaults to `os.homedir()`. Exposed for tests. */
 	homeDir?: string;
-	/** Defaults to DEFAULT_STATE_PATH (`.pi-state/state.json`). */
+	/** An explicit state file. When unset, the path is resolved as described at
+	 * `statepath.ts`'s `resolveStatePath`. */
 	statePath?: string;
 	/** Defaults to `process.env`. Exposed for tests. */
 	env?: NodeJS.ProcessEnv;
@@ -180,7 +178,7 @@ export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = 
 		);
 	}
 	const log = opts.log ?? ((message: string) => console.error(message));
-	const statePath = opts.statePath ?? DEFAULT_STATE_PATH;
+	const statePath = await resolveStatePath({ statePath: opts.statePath, homeDir: opts.homeDir, log });
 	const schema = await resolveSchema({ schemaPath: opts.schemaPath, homeDir: opts.homeDir, log });
 	// Captured before anything assigns schema.maxStateBytes; applyAutoMaxStateBytes needs
 	// the value the schema file declared.

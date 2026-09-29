@@ -3,7 +3,8 @@
 // re-reads the version under the lock and refuses stale commits. Atomic rename
 // ensures readers see a complete file. The temp file also serves as the lock.
 
-import { open, readFile, rename, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { dirname } from "node:path";
 import { type DocObject, marshal, merge, type Schema, unmarshal } from "../agentstate/index.js";
 import { rawJsonMember } from "../stateboundary/statewindow.js";
 
@@ -84,6 +85,7 @@ export async function commitFileState(
 	expectVersion: number,
 ): Promise<CommitResult> {
 	const tmpPath = `${path}.tmp`;
+	await mkdir(dirname(path), { recursive: true });
 	const deadline = Date.now() + LOCK_TIMEOUT_MS;
 	for (;;) {
 		let handle: Awaited<ReturnType<typeof open>> | undefined;

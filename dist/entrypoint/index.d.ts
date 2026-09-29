@@ -1,7 +1,4 @@
 import { type BoundaryAPI } from "../stateboundary/index.js";
-/** Default state file location, relative to pi's working directory; beside
- * `loadschema.ts`'s DEFAULT_SCHEMA_PATH. */
-export declare const DEFAULT_STATE_PATH = ".pi-state/state.json";
 export interface PiTextContent {
     type: "text";
     text: string;
@@ -24,10 +21,11 @@ export interface PiStateOptions {
     /** An explicit schema file; a missing one is an error. When unset, the schema is looked
      * up as described at `loadschema.ts`'s `resolveSchema`. */
     schemaPath?: string;
-    /** Where `.pi-state/schema.json` is looked up after the working directory. Defaults to
-     * `os.homedir()`. Exposed for tests. */
+    /** Where `.pi-state/schema.json` and `.pi-state/state.json` are looked up after the
+     * working directory. Defaults to `os.homedir()`. Exposed for tests. */
     homeDir?: string;
-    /** Defaults to DEFAULT_STATE_PATH (`.pi-state/state.json`). */
+    /** An explicit state file. When unset, the path is resolved as described at
+     * `statepath.ts`'s `resolveStatePath`. */
     statePath?: string;
     /** Defaults to `process.env`. Exposed for tests. */
     env?: NodeJS.ProcessEnv;

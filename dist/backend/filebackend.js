@@ -2,7 +2,8 @@
 // A fixed temp path, created with O_EXCL, serializes concurrent writers. Each writer
 // re-reads the version under the lock and refuses stale commits. Atomic rename
 // ensures readers see a complete file. The temp file also serves as the lock.
-import { open, readFile, rename, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { dirname } from "node:path";
 import { marshal, merge, unmarshal } from "../agentstate/index.js";
 import { rawJsonMember } from "../stateboundary/statewindow.js";
 /** The compare-and-set refusal: a commit decided against a version that has since
@@ -58,6 +59,7 @@ function sleep(ms) {
  * cannot be acquired within LOCK_TIMEOUT_MS. */
 export async function commitFileState(path, schema, patch, expectVersion) {
     const tmpPath = `${path}.tmp`;
+    await mkdir(dirname(path), { recursive: true });
     const deadline = Date.now() + LOCK_TIMEOUT_MS;
     for (;;) {
         let handle;

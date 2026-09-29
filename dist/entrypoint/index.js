@@ -12,9 +12,7 @@ import { applyAutoMaxStateBytes, contextWindowFromModelHolder, contextWindowToke
 import { ENV_STATE_MODE, paperOptionsFromEnv, stateWindowOptionsFromEnv } from "./env.js";
 import { resolveSchema } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
-/** Default state file location, relative to pi's working directory; beside
- * `loadschema.ts`'s DEFAULT_SCHEMA_PATH. */
-export const DEFAULT_STATE_PATH = ".pi-state/state.json";
+import { resolveStatePath } from "./statepath.js";
 // pi coerces arguments before execute. Patch numbers arrive as JS numbers and are
 // stored as String(v); arbitrary-precision digits may already be lost. See README.
 function toDocValue(v) {
@@ -106,7 +104,7 @@ export async function installPiState(pi, opts = {}) {
         throw new Error("[pi-state] this pi exposes no replaceTranscript — pi-state cannot bound the prompt on this host, so it refuses to install rather than run a state loop that can never take effect");
     }
     const log = opts.log ?? ((message) => console.error(message));
-    const statePath = opts.statePath ?? DEFAULT_STATE_PATH;
+    const statePath = await resolveStatePath({ statePath: opts.statePath, homeDir: opts.homeDir, log });
     const schema = await resolveSchema({ schemaPath: opts.schemaPath, homeDir: opts.homeDir, log });
     // Captured before anything assigns schema.maxStateBytes; applyAutoMaxStateBytes needs
     // the value the schema file declared.
