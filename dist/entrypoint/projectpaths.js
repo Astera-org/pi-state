@@ -1,9 +1,9 @@
 // Lookup locations shared by `resolveSchema` and `resolveStatePath`: the working
-// directory's `.pi-state/<file>`, then a per-project file under pi's agent directory.
+// directory's `.pi-state/<file>`, then a file under pi's agent directory, scoped to the project and optionally to a session.
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 /** Environment variable overriding pi's agent directory. */
 const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 /** pi's agent directory: `$PI_CODING_AGENT_DIR` when set, else `<home>/.pi/agent`. */
@@ -17,12 +17,16 @@ async function projectKey() {
 }
 /**
  * The lookup locations for `file` (`schema.json` or `state.json`): the path relative to
- * the working directory, and `<agentDir>/pi-state/<projectKey>/<file>`.
+ * the working directory, and `<agentDir>/pi-state/<projectKey>/[<sessionId>/]<file>`.
+ * A `sessionId` that is not a single path segment throws.
  */
-export async function projectPaths(file, homeDir) {
+export async function projectPaths(file, homeDir, sessionId) {
+    if (sessionId !== undefined && (sessionId === "" || sessionId === ".." || basename(sessionId) !== sessionId)) {
+        throw new Error(`[pi-state] session id ${JSON.stringify(sessionId)} is not usable as a directory name`);
+    }
     return {
         cwdPath: join(".pi-state", file),
-        homePath: join(agentDir(homeDir), "pi-state", await projectKey(), file),
+        homePath: join(agentDir(homeDir), "pi-state", await projectKey(), ...(sessionId ? [sessionId] : []), file),
     };
 }
 //# sourceMappingURL=projectpaths.js.map

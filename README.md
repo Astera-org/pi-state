@@ -186,7 +186,7 @@ The pi extension. `installPiState` (the module's default export, loaded via
 | `.pi-state/schema.json` (working directory) | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below). Optional | `PiStateOptions.schemaPath` |
 | `<agent dir>/pi-state/<key>/schema.json` | the same; used when the working directory has none. `<key>` is the first 24 hex digits of the SHA-256 of the symlink-resolved working directory, so each directory has its own file. Optional | `PiStateOptions.homeDir` |
 | `.pi-state/state.json` (working directory) | Σ itself, as `src/backend` reads and writes it; used when it exists | `PiStateOptions.statePath` |
-| `<agent dir>/pi-state/<key>/state.json` | the same, with the same `<key>`; used when the working directory has none, and where a new state file is created | `PiStateOptions.homeDir` |
+| `<agent dir>/pi-state/<key>/<session id>/state.json` | the same, with the same `<key>` and the id of the current pi session, so concurrent or successive sessions never share Σ; used when the working directory has none, and where a new state file is created. Resolved at the first `state_get` / `state_commit` of each session | `PiStateOptions.homeDir` |
 
 With neither schema file, the built-in default applies (see "Configure"). A new state
 file is created under the home directory, never in the working directory.
@@ -197,7 +197,7 @@ file is created under the home directory, never in the working directory.
 | --- | --- | --- |
 | `PI_STATE_LOOP` | the state loop's on/off switch. Kill-switch semantics: unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it **on**; a recognized negative (`0`/`false`/`no`/`off`) turns it off; anything else is unrecognized and also refuses (fail closed) | **on** |
 | `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ (0–20) | `4`; `1` in `paper` mode |
-| `PI_CODING_AGENT_DIR` | pi's agent directory; the per-project files above live in its `pi-state/` subdirectory | `~/.pi/agent` |
+| `PI_CODING_AGENT_DIR` | pi's agent directory; the per-project schema and per-session state files above live in its `pi-state/` subdirectory | `~/.pi/agent` |
 | `PI_STATE_MODE` | `boundary` or `paper` (see "Modes" below). Any other value refuses installation (logged; tools stay registered) | `boundary` |
 | `PI_STATE_REQUIRE_COMMIT` | `paper` mode only: `every`, `off`, or a positive integer K (see "Modes"). Any other value refuses installation | `every` |
 | `PI_STATE_CONTEXT_WINDOW_TOKENS` | a manual stopgap for auto sizing (below): the active model's context window, in tokens, on a `pi` this entrypoint cannot otherwise learn it from | unset |

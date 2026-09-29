@@ -1,5 +1,5 @@
 // The state path lookup chain: explicit statePath, ./.pi-state/state.json (when it
-// exists), then <agent dir>/pi-state/<key>/state.json (created when absent).
+// exists), then <agent dir>/pi-state/<key>/<sessionId>/state.json (created when absent).
 
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
@@ -26,7 +26,10 @@ async function writeState(root: string, version: number): Promise<void> {
 	await writeFile(join(root, ".pi-state", "state.json"), `{"version":${version},"doc":{}}`, "utf8");
 }
 
-const scopedHomeState = async () => (await projectPaths("state.json", homeDir)).homePath;
+const SESSION = "session-a";
+const ctxFor = (sessionId: string) => ({ sessionManager: { getSessionId: () => sessionId } });
+
+const scopedHomeState = async (sessionId = SESSION) => (await projectPaths("state.json", homeDir, sessionId)).homePath;
 
 async function writeHomeState(version: number): Promise<void> {
 	const path = await scopedHomeState();
@@ -55,15 +58,18 @@ afterEach(async () => {
 	await rm(homeDir, { recursive: true, force: true });
 });
 
-const resolve = (extra: { statePath?: string } = {}) =>
-	resolveStatePath({ homeDir, log: (m) => logs.push(m), ...extra });
+const resolve = (extra: { statePath?: string; sessionId?: string } = {}) =>
+	resolveStatePath({ homeDir, sessionId: SESSION, log: (m) => logs.push(m), ...extra });
 
-async function installedTools(extra: { statePath?: string } = {}) {
+async function installedTools(extra: { statePath?: string; sessionId?: string } = {}) {
+	const { sessionId = SESSION, ...opts } = extra;
 	const pi = fakePi();
-	await installPiState(pi, { homeDir, env: {}, log: (m) => logs.push(m), ...extra });
-	const get = async () => JSON.parse((await pi.tools.get("state_get")!.execute("g", {})).content[0]!.text);
-	const commit = (version: number) =>
-		pi.tools.get("state_commit")!.execute("c", { patch: { objective: "x" }, version });
+	await installPiState(pi, { homeDir, env: {}, log: (m) => logs.push(m), ...opts });
+	const ctx = ctxFor(sessionId);
+	const get = async () =>
+		JSON.parse((await pi.tools.get("state_get")!.execute("g", {}, undefined, undefined, ctx)).content[0]!.text);
+	const commit = (version: number, objective = "x") =>
+		pi.tools.get("state_commit")!.execute("c", { patch: { objective }, version }, undefined, undefined, ctx);
 	return { get, commit };
 }
 
@@ -116,13 +122,51 @@ describe("state path lookup chain", () => {
 			process.chdir(otherDir);
 			const second = await resolve();
 			expect(second).not.toBe(first);
-			expect(dirname(dirname(second))).toBe(dirname(dirname(first)));
+			expect(dirname(dirname(dirname(second)))).toBe(dirname(dirname(dirname(first))));
 			process.chdir(projectDir);
 			expect(await resolve()).toBe(first);
 		} finally {
 			process.chdir(projectDir);
 			await rm(otherDir, { recursive: true, force: true });
 		}
+	});
+
+	test("two sessions in one working directory get different home files under the same project directory", async () => {
+		const a = await resolve({ sessionId: "session-a" });
+		const b = await resolve({ sessionId: "session-b" });
+		expect(a).not.toBe(b);
+		expect(dirname(dirname(a))).toBe(dirname(dirname(b)));
+		expect(await resolve({ sessionId: "session-a" })).toBe(a);
+	});
+
+	test("state committed in one session is not visible to another session in the same directory", async () => {
+		const a = await installedTools({ sessionId: "session-a" });
+		const b = await installedTools({ sessionId: "session-b" });
+		await a.commit(0, "from a");
+		expect((await b.get()).exists).toBe(false);
+		await b.commit(0, "from b");
+		expect((await a.get()).doc.objective).toBe("from a");
+		expect((await b.get()).doc.objective).toBe("from b");
+	});
+
+	test("one installation follows the session id across calls", async () => {
+		const pi = fakePi();
+		await installPiState(pi, { homeDir, env: {}, log: () => {} });
+		const call = (id: string, name: string, params: object) =>
+			pi.tools.get(name)!.execute("c", params, undefined, undefined, ctxFor(id));
+		await call("session-a", "state_commit", { patch: { objective: "a" }, version: 0 });
+		expect(JSON.parse((await call("session-b", "state_get", {})).content[0]!.text).exists).toBe(false);
+		expect(JSON.parse((await call("session-a", "state_get", {})).content[0]!.text).doc.objective).toBe("a");
+	});
+
+	test("a context without a session id fails the tool call unless statePath is set", async () => {
+		const pi = fakePi();
+		await installPiState(pi, { homeDir, env: {}, log: () => {} });
+		await expect(pi.tools.get("state_get")!.execute("g", {})).rejects.toThrow(/no session id/);
+	});
+
+	test("an unusable session id is rejected", async () => {
+		await expect(resolve({ sessionId: "../escape" })).rejects.toThrow(/not usable/);
 	});
 
 	test("PI_CODING_AGENT_DIR replaces ~/.pi/agent as the base directory", async () => {
@@ -142,17 +186,5 @@ describe("state path lookup chain", () => {
 		const direct = await resolve();
 		process.chdir(link);
 		expect(await resolve()).toBe(direct);
-	});
-
-	test("state written for one working directory is not read from another", async () => {
-		await (await installedTools()).commit(0);
-		const otherDir = await mkdtemp(join(tmpdir(), "pi-state-project-"));
-		try {
-			process.chdir(otherDir);
-			expect((await (await installedTools()).get()).exists).toBe(false);
-		} finally {
-			process.chdir(projectDir);
-			await rm(otherDir, { recursive: true, force: true });
-		}
 	});
 });

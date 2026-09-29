@@ -32,7 +32,7 @@ import { applyAutoMaxStateBytes, contextWindowFromModelHolder, contextWindowToke
 import { ENV_STATE_MODE, paperOptionsFromEnv, stateWindowOptionsFromEnv } from "./env.js";
 import { resolveSchema } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
-import { resolveStatePath } from "./statepath.js";
+import { stateLocator } from "./statepath.js";
 
 // --- the slice of pi's extension API this entrypoint depends on -------------------
 // Declared structurally; this package has no `pi` dependency.
@@ -70,7 +70,7 @@ export interface PiStateOptions {
 	 * up as described at `loadschema.ts`'s `resolveSchema`. */
 	schemaPath?: string;
 	/** Home directory of the `<home>/.pi/agent` fallback (used when `PI_CODING_AGENT_DIR`
-	 * is unset), where `pi-state/<key>/{schema,state}.json` are looked up after the working
+	 * is unset), where `pi-state/<key>/schema.json` and `pi-state/<key>/<sessionId>/state.json` are looked up after the working
 	 * directory. Defaults to `os.homedir()`. Exposed for tests. */
 	homeDir?: string;
 	/** An explicit state file. When unset, the path is resolved as described at
@@ -122,27 +122,27 @@ function stateGetEnvelope(schema: Schema, stored: Awaited<ReturnType<typeof read
 	return `{"ok":true,"version":${stored.version},"doc":${marshal(stored.doc)},"exists":true,"declaredKeys":${keys},"declaredTypes":${types},"maxStateBytes":${cap}}`;
 }
 
-function stateGetTool(schema: Schema, statePath: string): PiToolDefinition {
+function stateGetTool(schema: Schema, locate: (ctx: unknown) => Promise<string>): PiToolDefinition {
 	return {
 		name: "state_get",
 		label: "state_get",
 		description:
 			"Read your durable working state (Σ) and the schema it must fit — call this before your first state_commit.",
 		parameters: { type: "object", properties: {}, additionalProperties: false },
-		execute: async () => ({
-			content: [{ type: "text", text: stateGetEnvelope(schema, await readFileState(statePath)) }],
+		execute: async (_toolCallId, _params, _signal, _onUpdate, ctx) => ({
+			content: [{ type: "text", text: stateGetEnvelope(schema, await readFileState(await locate(ctx))) }],
 		}),
 	};
 }
 
-function stateCommitTool(schema: Schema, statePath: string): PiToolDefinition {
+function stateCommitTool(schema: Schema, locate: (ctx: unknown) => Promise<string>): PiToolDefinition {
 	return {
 		name: "state_commit",
 		label: "state_commit",
 		description:
 			"Commit a patch to your durable working state (Σ). A null value at a key deletes it. Requires the version you last read (0 if you have none yet) as a compare-and-set token: a commit decided against an older version is refused.",
 		parameters: stateCommitInputSchema(schema),
-		execute: async (_toolCallId, params) => {
+		execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
 			const args = (params ?? {}) as { patch?: unknown; version?: unknown };
 			if (args.version === undefined || args.version === null) {
 				throw new Error(
@@ -154,7 +154,7 @@ function stateCommitTool(schema: Schema, statePath: string): PiToolDefinition {
 				throw new Error(`version must be a non-negative integer, got ${JSON.stringify(args.version)}`);
 			}
 			const patch = toPatchDoc(args.patch ?? {});
-			const result = await commitFileState(statePath, schema, patch, version);
+			const result = await commitFileState(await locate(ctx), schema, patch, version);
 			const text = `{"ok":true,"version":${result.version},"doc":${marshal(result.doc)},"declaredTypes":${JSON.stringify(declaredTypes(schema))},"maxStateBytes":${schemaCap(schema)}}`;
 			return { content: [{ type: "text", text }] };
 		},
@@ -179,7 +179,7 @@ export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = 
 		);
 	}
 	const log = opts.log ?? ((message: string) => console.error(message));
-	const statePath = await resolveStatePath({ statePath: opts.statePath, homeDir: opts.homeDir, log });
+	const locate = stateLocator({ statePath: opts.statePath, homeDir: opts.homeDir, log });
 	const schema = await resolveSchema({ schemaPath: opts.schemaPath, homeDir: opts.homeDir, log });
 	// Captured before anything assigns schema.maxStateBytes; applyAutoMaxStateBytes needs
 	// the value the schema file declared.
@@ -188,8 +188,8 @@ export async function installPiState(pi: PiExtensionAPI, opts: PiStateOptions = 
 	// Install-time resolution: before a session starts, only the env var is available.
 	applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokensFromEnv(env), log);
 
-	pi.registerTool(stateGetTool(schema, statePath));
-	pi.registerTool(stateCommitTool(schema, statePath));
+	pi.registerTool(stateGetTool(schema, locate));
+	pi.registerTool(stateCommitTool(schema, locate));
 
 	// Registered before the boundary: both are `tool_result` handlers run in registration
 	// order, and the cache must observe a result before the boundary reads Σ (see
