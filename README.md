@@ -13,7 +13,9 @@ Mapping to the paper:
 
 - Σ is the paper's execution state.
 - `state_commit` is the paper's state patch (dict merge; `null` deletes a key).
-- Transcript replacement is the paper's bounded prompt.
+- Transcript replacement is the paper's bounded prompt (`boundary` mode).
+- In `paper` mode (below), P is the system prompt with the state contract appended, Σ_t is
+  the Σ message, and O_t is the trailing tool cycles after the newest user message.
 
 ## Install
 
@@ -193,8 +195,33 @@ is always project-relative, whichever schema is used.
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `PI_STATE_LOOP` | the state loop's on/off switch. Kill-switch semantics: unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it **on**; a recognized negative (`0`/`false`/`no`/`off`) turns it off; anything else is unrecognized and also refuses (fail closed) | **on** |
-| `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ after a boundary | `4` |
+| `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ (0–20) | `4`; `1` in `paper` mode |
+| `PI_STATE_MODE` | `boundary` or `paper` (see "Modes" below). Any other value refuses installation (logged; tools stay registered) | `boundary` |
+| `PI_STATE_REQUIRE_COMMIT` | `paper` mode only: `every`, `off`, or a positive integer K (see "Modes"). Any other value refuses installation | `every` |
 | `PI_STATE_CONTEXT_WINDOW_TOKENS` | a manual stopgap for auto sizing (below): the active model's context window, in tokens, on a `pi` this entrypoint cannot otherwise learn it from | unset |
+
+**Modes.** `PI_STATE_MODE` selects how Σ reaches the prompt.
+
+- `boundary` (default): after a turn that accepted a `state_commit`, replaces the
+  transcript with `[Σ, newest user message, last N cycles]` via `replaceTranscript`.
+- `paper`: on every model call, the `context` event returns `[Σ message, newest user
+  message, last N complete tool cycles]`, whether or not a commit happened this turn. No
+  Σ yet shows `{}` at version 0. `N=0` keeps Σ and the user message only. A trailing
+  window that cannot be paired falls back to Σ and the user message. The system prompt
+  gets a contract appended (`before_agent_start`): earlier turns are not shown, persist
+  everything needed with `state_commit`, and call `state_commit` in the same message as
+  each action. `replaceTranscript` is not used, so `pi` does not need it in this mode.
+
+  `PI_STATE_REQUIRE_COMMIT` sets how the contract is enforced. A non-`state_commit` tool
+  call from an assistant message with no `state_commit` call is blocked with the reason
+  `include a state_commit call in the same message as this action`:
+  - `every`: every such message is blocked;
+  - `off`: never blocked;
+  - K: blocked once K consecutive tool-call messages have had no `state_commit` (the
+    count includes the current message and resets on a message with a commit or a new
+    prompt; `1` is equivalent to `every`).
+
+  Run it: `PI_STATE_MODE=paper pi -e dist/entrypoint/index.js`.
 
 **Auto sizing.** A schema that declares no `maxStateBytes` is sized as a percentage of
 the model's context window: `autoMaxStateBytesPercent` (1-100, default 65) percent of the
@@ -210,11 +237,11 @@ the first of these sources that answers:
 An explicit `maxStateBytes` in the schema file always takes precedence over auto sizing.
 If neither source resolves, the cap is `DEFAULT_MAX_STATE_BYTES` (4096).
 
-**Installation failures.** `installPiState` checks `replaceTranscript` before schema
-lookup and throws if it is absent. Unreadable or invalid schema files and a missing
+**Installation failures.** In `boundary` mode, `installPiState` checks `replaceTranscript`
+before schema lookup and throws if it is absent; `paper` mode does not check. Unreadable or invalid schema files and a missing
 explicit `schemaPath` also throw. Missing default schema files use the lookup fallback.
-A disabled or invalid kill switch or malformed cycle count logs to stderr and skips
-the boundary.
+A disabled or invalid kill switch, malformed cycle count, or invalid `PI_STATE_MODE` or
+`PI_STATE_REQUIRE_COMMIT` logs to stderr and skips the mode's handlers.
 
 **Known limitation: number precision.** `pi` coerces tool arguments before `execute`.
 The patch arrives as parsed JS values; numbers are stored as `String(n)` and may have

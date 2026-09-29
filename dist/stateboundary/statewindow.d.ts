@@ -66,8 +66,8 @@ export interface StateWindowConfig {
  * and disable the mode; values are never clamped.
  */
 export declare function parseToolCycles(raw: string | undefined): number | null;
-/** Which of the three conditions refused. */
-export type StateWindowCondition = "kill-switch" | "mode" | "cycles";
+/** Which condition refused. */
+export type StateWindowCondition = "kill-switch" | "mode" | "cycles" | "state-mode" | "require-commit";
 /** Why the state loop is off, when it is. */
 export interface StateWindowOff {
     condition: StateWindowCondition;
@@ -78,6 +78,7 @@ export interface StateWindowOff {
     fault: boolean;
     reason: string;
 }
+export declare function quoted(raw: string | undefined): string;
 /**
  * The mode's configuration, or the condition that turned it off. `resolveStateWindow` is
  * derived from this function.

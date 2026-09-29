@@ -7,9 +7,9 @@
 // `state_commit` result.
 import { declaredKeys, declaredTypes, JsonNumber, marshal, schemaCap, } from "../agentstate/index.js";
 import { commitFileState, readFileState } from "../backend/index.js";
-import { installStateBoundary, installStateCommitCache, recordStateWindowIntoTranscript, seedStateCommitCache, } from "../stateboundary/index.js";
+import { installPaperMode, installStateBoundary, installStateCommitCache, paperSetting, recordStateWindowIntoTranscript, seedStateCommitCache, stateBoundaryNotInstalled, stateModeSetting, } from "../stateboundary/index.js";
 import { applyAutoMaxStateBytes, contextWindowFromModelHolder, contextWindowTokensFromEnv } from "./autocap.js";
-import { stateWindowOptionsFromEnv } from "./env.js";
+import { ENV_STATE_MODE, paperOptionsFromEnv, stateWindowOptionsFromEnv } from "./env.js";
 import { resolveSchema } from "./loadschema.js";
 import { stateCommitInputSchema } from "./patchschema.js";
 /** Default state file location, relative to pi's working directory; beside
@@ -94,12 +94,15 @@ function stateCommitTool(schema, statePath) {
  * Installs the state loop: registers the two tools backed by the file backend and
  * installs the transcript boundary.
  *
- * Throws when `pi` exposes no `replaceTranscript`. The check runs first, before the
- * schema is resolved. (`installStateBoundary` only logs and skips for its other
- * decline reasons, such as the kill switch or an invalid cycle count.)
+ * In boundary mode, throws when `pi` exposes no `replaceTranscript`. The check runs first,
+ * before the schema is resolved. Paper mode does not use `replaceTranscript` and skips the
+ * check. (The mode logs and skips for its other decline reasons, such as the kill switch,
+ * an invalid cycle count, `PI_STATE_MODE`, or `PI_STATE_REQUIRE_COMMIT`.)
  */
 export async function installPiState(pi, opts = {}) {
-    if (typeof pi.replaceTranscript !== "function") {
+    const env = opts.env ?? process.env;
+    const mode = stateModeSetting(env[ENV_STATE_MODE]);
+    if (mode !== "paper" && typeof pi.replaceTranscript !== "function") {
         throw new Error("[pi-state] this pi exposes no replaceTranscript — pi-state cannot bound the prompt on this host, so it refuses to install rather than run a state loop that can never take effect");
     }
     const log = opts.log ?? ((message) => console.error(message));
@@ -108,7 +111,6 @@ export async function installPiState(pi, opts = {}) {
     // Captured before anything assigns schema.maxStateBytes; applyAutoMaxStateBytes needs
     // the value the schema file declared.
     const declaredMaxStateBytes = schema.maxStateBytes;
-    const env = opts.env ?? process.env;
     // Install-time resolution: before a session starts, only the env var is available.
     applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWindowTokensFromEnv(env), log);
     pi.registerTool(stateGetTool(schema, statePath));
@@ -117,9 +119,20 @@ export async function installPiState(pi, opts = {}) {
     // order, and the cache must observe a result before the boundary reads Σ (see
     // stateboundary.ts's `installStateBoundary`).
     installStateCommitCache(pi);
-    const options = stateWindowOptionsFromEnv(env);
-    const record = (data) => recordStateWindowIntoTranscript(pi, data, log);
-    installStateBoundary(pi, options, record, { log });
+    if (mode === "paper") {
+        const setting = paperSetting(paperOptionsFromEnv(env));
+        if ("condition" in setting)
+            log(stateBoundaryNotInstalled(setting));
+        else
+            installPaperMode(pi, setting, { log });
+    }
+    else if (typeof mode === "object") {
+        log(stateBoundaryNotInstalled(mode));
+    }
+    else {
+        const record = (data) => recordStateWindowIntoTranscript(pi, data, log);
+        installStateBoundary(pi, stateWindowOptionsFromEnv(env), record, { log });
+    }
     pi.on("session_start", (_event, ctx) => {
         seedStateCommitCache(ctx, log);
         // A model's contextWindow takes precedence over the env var (see autocap.ts).
