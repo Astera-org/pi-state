@@ -330,3 +330,121 @@ describe("auto sizing (the default for a schema with no maxStateBytes): resolvin
 		expect(await maxStateBytesFromStateGet(pi)).toBe(4096);
 	});
 });
+
+describe("PI_STATE_MODE", () => {
+	const handlerEvents = (pi: ReturnType<typeof fakePi>) => pi.handlers.map((h) => h.event);
+
+	test("paper installs the paper handlers and no turn_end boundary", async () => {
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "paper" } });
+		const events = handlerEvents(pi);
+		for (const event of ["before_agent_start", "context", "message_end", "tool_call"])
+			expect(events).toContain(event);
+		expect(events).not.toContain("turn_end");
+	});
+
+	test("paper installs on a pi without replaceTranscript", async () => {
+		const pi = fakePi({ replaceTranscript: undefined });
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "paper" } });
+		expect([...pi.tools.keys()].sort()).toEqual(["state_commit", "state_get"]);
+		expect(handlerEvents(pi)).toContain("context");
+	});
+
+	test("boundary still refuses a pi without replaceTranscript, whether mode is unset or explicit", async () => {
+		for (const env of [{}, { PI_STATE_MODE: "boundary" }]) {
+			const pi = fakePi({ replaceTranscript: undefined });
+			await expect(installPiState(pi, { schemaPath, statePath, env })).rejects.toThrow(/replaceTranscript/);
+		}
+	});
+
+	test("boundary installs the turn_end boundary and no paper handlers", async () => {
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: {} });
+		const events = handlerEvents(pi);
+		expect(events).toContain("turn_end");
+		for (const event of ["before_agent_start", "context", "message_end", "tool_call"])
+			expect(events).not.toContain(event);
+	});
+
+	test("the system prompt carries the contract in paper mode and not in boundary mode", async () => {
+		const prompt = async (env: NodeJS.ProcessEnv) => {
+			const pi = fakePi();
+			await installPiState(pi, { schemaPath, statePath, env });
+			const handler = pi.handlers.find((h) => h.event === "before_agent_start")?.handler;
+			return handler?.({ systemPrompt: "base" }, {}) as { systemPrompt: string } | undefined;
+		};
+		expect((await prompt({ PI_STATE_MODE: "paper" }))?.systemPrompt).toMatch(/^base\n\n.*state_commit/s);
+		expect(await prompt({})).toBeUndefined();
+	});
+
+	test("paper defaults to one trailing cycle and PI_STATE_WINDOW_CYCLES=0 keeps none", async () => {
+		const held = [
+			userMsg("go"),
+			callMsg("a", "read"),
+			toolResultMsg("a", "read", "x"),
+			callMsg("b", "read"),
+			toolResultMsg("b", "read", "y"),
+		];
+		const project = async (env: NodeJS.ProcessEnv) => {
+			const pi = fakePi();
+			await installPiState(pi, { schemaPath, statePath, env });
+			const context = pi.handlers.find((h) => h.event === "context")!.handler;
+			return (context({ messages: held }, {}) as { messages: unknown[] }).messages;
+		};
+		expect((await project({ PI_STATE_MODE: "paper" })).length).toBe(4);
+		expect((await project({ PI_STATE_MODE: "paper", PI_STATE_WINDOW_CYCLES: "0" })).length).toBe(2);
+		expect((await project({ PI_STATE_MODE: "paper", PI_STATE_WINDOW_CYCLES: "2" })).length).toBe(6);
+	});
+
+	test("an invalid mode is refused: logged, with no mode handlers installed", async () => {
+		const pi = fakePi();
+		const logs: string[] = [];
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "papr" }, log: (m) => logs.push(m) });
+		expect(pi.handlers.map((h) => h.event).filter((e) => e !== "session_start" && e !== "model_select")).toEqual([
+			"tool_result",
+		]);
+		expect(logs.some((l) => l.includes("[condition=state-mode fault=yes]"))).toBe(true);
+	});
+
+	test("an invalid mode on a pi without replaceTranscript is logged as a mode refusal, not thrown", async () => {
+		const pi = fakePi({ replaceTranscript: undefined });
+		const logs: string[] = [];
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "papr" }, log: (m) => logs.push(m) });
+		expect(logs.some((l) => l.includes("[condition=state-mode fault=yes]"))).toBe(true);
+	});
+
+	test("an invalid PI_STATE_REQUIRE_COMMIT is refused in paper mode", async () => {
+		for (const bad of ["0", "some", "-2"]) {
+			const pi = fakePi();
+			const logs: string[] = [];
+			await installPiState(pi, {
+				schemaPath,
+				statePath,
+				env: { PI_STATE_MODE: "paper", PI_STATE_REQUIRE_COMMIT: bad },
+				log: (m) => logs.push(m),
+			});
+			expect(handlerEvents(pi), bad).not.toContain("context");
+			expect(
+				logs.some((l) => l.includes("[condition=require-commit fault=yes]")),
+				bad,
+			).toBe(true);
+		}
+	});
+
+	test("PI_STATE_LOOP=off installs no paper handlers", async () => {
+		const pi = fakePi();
+		await installPiState(pi, {
+			schemaPath,
+			statePath,
+			env: { PI_STATE_MODE: "paper", PI_STATE_LOOP: "off" },
+			log: () => {},
+		});
+		expect(handlerEvents(pi)).not.toContain("context");
+	});
+
+	test("PI_STATE_REQUIRE_COMMIT is not read in boundary mode", async () => {
+		const pi = fakePi();
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_REQUIRE_COMMIT: "bogus" } });
+		expect(handlerEvents(pi)).toContain("turn_end");
+	});
+});

@@ -107,8 +107,8 @@ function killSwitch(raw: string | undefined): "allow" | "off" | "unrecognized" {
 	return KILL_SWITCH_NEGATIVES.has(value) ? "off" : "unrecognized";
 }
 
-/** Which of the three conditions refused. */
-export type StateWindowCondition = "kill-switch" | "mode" | "cycles";
+/** Which condition refused. */
+export type StateWindowCondition = "kill-switch" | "mode" | "cycles" | "state-mode" | "require-commit";
 
 /** Why the state loop is off, when it is. */
 export interface StateWindowOff {
@@ -124,7 +124,7 @@ export interface StateWindowOff {
 /** The longest raw value quoted into a diagnostic. */
 const MAX_QUOTED = 60;
 
-function quoted(raw: string | undefined): string {
+export function quoted(raw: string | undefined): string {
 	if (raw === undefined) return "(unset)";
 	return JSON.stringify(raw.length > MAX_QUOTED ? `${raw.slice(0, MAX_QUOTED)}…` : raw);
 }

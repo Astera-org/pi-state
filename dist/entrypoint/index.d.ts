@@ -37,9 +37,10 @@ export interface PiStateOptions {
  * Installs the state loop: registers the two tools backed by the file backend and
  * installs the transcript boundary.
  *
- * Throws when `pi` exposes no `replaceTranscript`. The check runs first, before the
- * schema is resolved. (`installStateBoundary` only logs and skips for its other
- * decline reasons, such as the kill switch or an invalid cycle count.)
+ * In boundary mode, throws when `pi` exposes no `replaceTranscript`. The check runs first,
+ * before the schema is resolved. Paper mode does not use `replaceTranscript` and skips the
+ * check. (The mode logs and skips for its other decline reasons, such as the kill switch,
+ * an invalid cycle count, `PI_STATE_MODE`, or `PI_STATE_REQUIRE_COMMIT`.)
  */
 export declare function installPiState(pi: PiExtensionAPI, opts?: PiStateOptions): Promise<void>;
 export default installPiState;

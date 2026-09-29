@@ -1,10 +1,20 @@
-// Transcript-boundary delivery of Σ. At the end of a turn that accepted a commit, replaces
-// pi's transcript with [Σ, the newest user turn, N trailing tool cycles].
+// Delivery of Σ. Boundary mode: at the end of a turn that accepted a commit, replaces pi's
+// transcript with [Σ, the newest user turn, N trailing tool cycles]. Paper mode (paper.ts):
+// projects that shape onto every model call.
 //
 // No environment reads: callers supply StateWindowOptions.
 
 export type { PairedCycle, PairingRefusal, PairingShape } from "./pairing.js";
 export { pairCycles } from "./pairing.js";
+export type { PaperConfig, PaperDeps, PaperOptions, RequireCommit, StateMode } from "./paper.js";
+export {
+	installPaperMode,
+	PAPER_COMMIT_REQUIRED_REASON,
+	PAPER_CONTRACT,
+	paperMessages,
+	paperSetting,
+	stateModeSetting,
+} from "./paper.js";
 export type {
 	BoundaryAPI,
 	BoundaryDeps,

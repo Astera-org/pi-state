@@ -71,7 +71,7 @@ function killSwitch(raw) {
 }
 /** The longest raw value quoted into a diagnostic. */
 const MAX_QUOTED = 60;
-function quoted(raw) {
+export function quoted(raw) {
     if (raw === undefined)
         return "(unset)";
     return JSON.stringify(raw.length > MAX_QUOTED ? `${raw.slice(0, MAX_QUOTED)}…` : raw);
