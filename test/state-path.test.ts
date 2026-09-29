@@ -166,7 +166,24 @@ describe("state path lookup chain", () => {
 	});
 
 	test("an unusable session id is rejected", async () => {
-		await expect(resolve({ sessionId: "../escape" })).rejects.toThrow(/not usable/);
+		for (const sessionId of ["../escape", "..", ".", "", "a/b", "a\\b", "a\0b"]) {
+			await expect(resolve({ sessionId })).rejects.toThrow(/not usable/);
+		}
+	});
+
+	test("an explicit statePath does not touch ctx", async () => {
+		const pi = fakePi();
+		const statePath = join(projectDir, "explicit.json");
+		await installPiState(pi, { homeDir, env: {}, statePath, log: () => {} });
+		const ctx = {
+			sessionManager: {
+				getSessionId: () => {
+					throw new Error("unavailable");
+				},
+			},
+		};
+		const got = await pi.tools.get("state_get")!.execute("g", {}, undefined, undefined, ctx);
+		expect(JSON.parse(got.content[0]!.text).exists).toBe(false);
 	});
 
 	test("PI_CODING_AGENT_DIR replaces ~/.pi/agent as the base directory", async () => {

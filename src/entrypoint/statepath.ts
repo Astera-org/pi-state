@@ -63,6 +63,10 @@ function sessionIdOf(ctx: unknown): string | undefined {
  * is cached per session id, so the lookup runs, and logs, once per session.
  */
 export function stateLocator(opts: Omit<ResolveStatePathOptions, "sessionId">): (ctx: unknown) => Promise<string> {
+	if (opts.statePath !== undefined) {
+		const explicit = opts.statePath;
+		return async () => explicit;
+	}
 	let cached: { sessionId: string | undefined; path: Promise<string> } | undefined;
 	return (ctx) => {
 		const sessionId = sessionIdOf(ctx);

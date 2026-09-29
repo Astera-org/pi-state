@@ -50,6 +50,10 @@ function sessionIdOf(ctx) {
  * is cached per session id, so the lookup runs, and logs, once per session.
  */
 export function stateLocator(opts) {
+    if (opts.statePath !== undefined) {
+        const explicit = opts.statePath;
+        return async () => explicit;
+    }
     let cached;
     return (ctx) => {
         const sessionId = sessionIdOf(ctx);
