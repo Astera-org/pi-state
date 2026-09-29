@@ -2,11 +2,7 @@
 // `resolveSchema`.
 
 import { access } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-/** State path relative to pi's working directory, beside DEFAULT_SCHEMA_PATH. */
-export const DEFAULT_STATE_PATH = ".pi-state/state.json";
+import { projectPaths } from "./projectpaths.js";
 
 export interface ResolveStatePathOptions {
 	/** An explicit state file. When set, it is returned unchanged. */
@@ -30,20 +26,19 @@ async function exists(path: string): Promise<boolean> {
  * Finds the state file, in order:
  *
  * 1. `opts.statePath`, when set.
- * 2. `./.pi-state/state.json` (DEFAULT_STATE_PATH, relative to pi's working directory),
- *    when it exists.
- * 3. `~/.pi-state/state.json`, whether or not it exists: a state file that exists in
+ * 2. `./.pi-state/state.json`, relative to pi's working directory, when it exists.
+ * 3. `~/.pi-state/projects/<projectKey>/state.json` (see `projectPaths`), whether or not it exists: a state file that exists in
  *    neither location is created there, never in the working directory.
  *
  * Logs which location was used.
  */
 export async function resolveStatePath(opts: ResolveStatePathOptions): Promise<string> {
 	if (opts.statePath !== undefined) return opts.statePath;
-	if (await exists(DEFAULT_STATE_PATH)) {
-		opts.log(`[pi-state] state: ${DEFAULT_STATE_PATH}`);
-		return DEFAULT_STATE_PATH;
+	const { cwdPath, homePath } = await projectPaths("state.json", opts.homeDir);
+	if (await exists(cwdPath)) {
+		opts.log(`[pi-state] state: ${cwdPath}`);
+		return cwdPath;
 	}
-	const homePath = join(opts.homeDir ?? homedir(), DEFAULT_STATE_PATH);
 	opts.log(`[pi-state] state: ${homePath}`);
 	return homePath;
 }

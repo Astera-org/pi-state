@@ -81,7 +81,7 @@ and `open_questions` (list, max 8). It declares no `maxStateBytes`, so the cap i
 automatically (see "Auto sizing" under `src/entrypoint` below).
 
 To replace the default, create `.pi-state/schema.json` relative to `pi`'s working
-directory (or `~/.pi-state/schema.json` to apply to every project), naming every key the
+directory (or `~/.pi-state/projects/<key>/schema.json`, where `<key>` identifies the working directory), naming every key the
 agent's state may hold:
 
 ```json
@@ -104,7 +104,7 @@ The schema is looked up in this order, and the source used is logged to stderr:
 
 1. `PiStateOptions.schemaPath`, when set;
 2. `.pi-state/schema.json` in `pi`'s working directory;
-3. `~/.pi-state/schema.json`;
+3. `~/.pi-state/projects/<key>/schema.json`;
 4. the built-in default.
 
 Only a missing file moves on to the next source. A schema with no keys is valid but
@@ -184,9 +184,9 @@ The pi extension. `installPiState` (the module's default export, loaded via
 | File | Purpose | Override |
 | --- | --- | --- |
 | `.pi-state/schema.json` (working directory) | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below). Optional | `PiStateOptions.schemaPath` |
-| `~/.pi-state/schema.json` | the same, shared by every project; used when the working directory has none. Optional | `PiStateOptions.homeDir` |
+| `~/.pi-state/projects/<key>/schema.json` | the same; used when the working directory has none. `<key>` is the first 16 hex digits of the SHA-256 of the symlink-resolved working directory, so each directory has its own file. Optional | `PiStateOptions.homeDir` |
 | `.pi-state/state.json` (working directory) | Σ itself, as `src/backend` reads and writes it; used when it exists | `PiStateOptions.statePath` |
-| `~/.pi-state/state.json` | the same; used when the working directory has none, and where a new state file is created | `PiStateOptions.homeDir` |
+| `~/.pi-state/projects/<key>/state.json` | the same, with the same `<key>`; used when the working directory has none, and where a new state file is created | `PiStateOptions.homeDir` |
 
 With neither schema file, the built-in default applies (see "Configure"). A new state
 file is created under the home directory, never in the working directory.
