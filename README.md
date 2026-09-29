@@ -223,12 +223,18 @@ written relative to the working directory.
     count includes the current message and resets on a message with a commit or a new
     prompt; `1` is equivalent to `every`).
 
+  `state_get` calls are never blocked, and a message containing only `state_get` calls
+  does not count toward K.
+
   Run it: `pi -e dist/entrypoint/index.js`. For boundary mode:
   `PI_STATE_MODE=boundary pi -e dist/entrypoint/index.js`.
 
 **Auto sizing.** A schema that declares no `maxStateBytes` is sized as a percentage of
-the model's context window: `autoMaxStateBytesPercent` (1-100, default 65) percent of the
-context window, at 4 bytes per token. `src/entrypoint` resolves the context window from
+the model's context window: `autoMaxStateBytesPercent` (1-100, default 10) percent of the
+context window, at 4 bytes per token. Without `autoMaxStateBytesPercent` the cap is
+`min(contextWindowTokens × 4 × 10%, 65536)` bytes; a schema that sets
+`autoMaxStateBytesPercent` gets `contextWindowTokens × 4 × percent%` with no ceiling.
+`src/entrypoint` resolves the context window from
 the first of these sources that answers:
 
 1. **The active model reported by `pi`**: `ExtensionContext.model` on `session_start` and

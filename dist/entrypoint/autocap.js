@@ -7,7 +7,7 @@
 //      `ModelSelectEvent.model` on `model_select`; `Model.contextWindow` is a number).
 //   2. `ENV_STATE_CONTEXT_WINDOW_TOKENS` (`env.ts`), used at install time (no session,
 //      hence no model yet) or when `pi` reports no model.
-import { DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, resolveAutoMaxStateBytes } from "../agentstate/index.js";
+import { DEFAULT_AUTO_MAX_STATE_BYTES_CEILING, DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, resolveAutoMaxStateBytes, } from "../agentstate/index.js";
 import { ENV_STATE_CONTEXT_WINDOW_TOKENS } from "./env.js";
 /** Reads `ENV_STATE_CONTEXT_WINDOW_TOKENS`, floored to an integer. Returns undefined
  * when it is unset or not a positive finite number. */
@@ -47,7 +47,8 @@ export function applyAutoMaxStateBytes(schema, declaredMaxStateBytes, contextWin
     if (contextWindowTokens === undefined)
         return;
     const percent = schema.autoMaxStateBytesPercent ?? DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT;
-    const bytes = resolveAutoMaxStateBytes(percent, contextWindowTokens);
+    const sized = resolveAutoMaxStateBytes(percent, contextWindowTokens);
+    const bytes = schema.autoMaxStateBytesPercent === undefined ? Math.min(sized, DEFAULT_AUTO_MAX_STATE_BYTES_CEILING) : sized;
     if (schema.maxStateBytes === bytes)
         return;
     schema.maxStateBytes = bytes;
