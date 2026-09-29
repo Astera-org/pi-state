@@ -5,7 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { parseSchema, type Schema } from "../agentstate/index.js";
 import { defaultSchema } from "./defaultschema.js";
-import { projectPaths } from "./projectpaths.js";
+import { projectPath } from "./projectpaths.js";
 
 export interface ResolveSchemaOptions {
 	/** An explicit schema file. When set, it is the only source consulted. */
@@ -34,9 +34,8 @@ async function readSchemaFile(path: string): Promise<Schema | undefined> {
  * Finds the schema, in order:
  *
  * 1. `opts.schemaPath`, when set; a missing file throws.
- * 2. `./.pi-state/schema.json`, relative to pi's working directory.
- * 3. `<agentDir>/pi-state/<projectKey>/schema.json` (see `projectPaths`).
- * 4. The built-in default (defaultschema.ts).
+ * 2. `<agentDir>/pi-state/<projectKey>/schema.json` (see `projectPath`).
+ * 3. The built-in default (defaultschema.ts).
  *
  * Only a missing file (ENOENT) falls through to the next source; a file that exists but
  * cannot be read or parsed throws. Logs which source was used.
@@ -52,13 +51,11 @@ export async function resolveSchema(opts: ResolveSchemaOptions): Promise<Schema>
 		opts.log(`[pi-state] schema: ${opts.schemaPath}`);
 		return schema;
 	}
-	const { cwdPath, homePath } = await projectPaths("schema.json", opts.homeDir);
-	for (const path of [cwdPath, homePath]) {
-		const schema = await readSchemaFile(path);
-		if (schema !== undefined) {
-			opts.log(`[pi-state] schema: ${path}`);
-			return schema;
-		}
+	const path = await projectPath("schema.json", opts.homeDir);
+	const schema = await readSchemaFile(path);
+	if (schema !== undefined) {
+		opts.log(`[pi-state] schema: ${path}`);
+		return schema;
 	}
 	opts.log("[pi-state] schema: built-in default (no schema file found)");
 	return defaultSchema();

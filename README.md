@@ -28,7 +28,7 @@ project-local installation, or `pi -e git:github.com/Astera-org/pi-state` for on
 
 ## Run it standalone
 
-The extension uses a schema, a state file under `.pi-state/`, and two local tools:
+The extension uses a schema, a state file under pi's agent directory, and two local tools:
 `state_get` and `state_commit`.
 
 `pi-state` requires the `pi.replaceTranscript` extension API. Install `pi`:
@@ -80,9 +80,11 @@ max 8), `findings` (list, max 16), `tested_hypotheses` (list, max 12), `active_f
 and `open_questions` (list, max 8). It declares no `maxStateBytes`, so the cap is sized
 automatically (see "Auto sizing" under `src/entrypoint` below).
 
-To replace the default, create `.pi-state/schema.json` relative to `pi`'s working
-directory (or `<agent dir>/pi-state/<key>/schema.json`, where `<agent dir>` is `$PI_CODING_AGENT_DIR` if set, else `~/.pi/agent`, and `<key>` identifies the working directory), naming every key the
-agent's state may hold:
+To replace the default, pass `schemaPath` to `installPiState`, or create the file at
+`<agent dir>/pi-state/<key>/schema.json`, where `<agent dir>` is `$PI_CODING_AGENT_DIR` if
+set, else `~/.pi/agent`, and `<key>` is the first 24 hex digits of the SHA-256 of the
+symlink-resolved working directory. Either way the file names every key the agent's state
+may hold:
 
 ```json
 {
@@ -103,9 +105,8 @@ merged document. `maxStateBytes` is optional; when omitted the cap is sized auto
 The schema is looked up in this order, and the source used is logged to stderr:
 
 1. `PiStateOptions.schemaPath`, when set;
-2. `.pi-state/schema.json` in `pi`'s working directory;
-3. `<agent dir>/pi-state/<key>/schema.json`;
-4. the built-in default.
+2. `<agent dir>/pi-state/<key>/schema.json`;
+3. the built-in default.
 
 Only a missing file moves on to the next source. A schema with no keys is valid but
 refuses every non-empty patch. A schema file that exists but does not parse fails
@@ -146,7 +147,7 @@ values with its caller.
 
 ## `src/backend`
 
-Σ storage as a JSON file in pi's working directory. `commitFileState` reads the current
+Σ storage as a JSON file at a caller-supplied path. `commitFileState` reads the current
 document, merges a patch through `src/agentstate`'s `merge`, and writes the result back
 with a version counter; `readFileState` returns the "before the first commit" shape
 (`exists: false, version: 0, doc: {}`) for a missing or corrupt file.
@@ -179,17 +180,15 @@ The pi extension. `installPiState` (the module's default export, loaded via
 - installs the transcript boundary (`src/stateboundary`'s `installStateBoundary`),
   configured from the environment variables below.
 
-**File layout.** Files under `.pi-state/`:
+**File layout.** Files under `<agent dir>/pi-state/`:
 
 | File | Purpose | Override |
 | --- | --- | --- |
-| `.pi-state/schema.json` (working directory) | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below). Optional | `PiStateOptions.schemaPath` |
-| `<agent dir>/pi-state/<key>/schema.json` | the same; used when the working directory has none. `<key>` is the first 24 hex digits of the SHA-256 of the symlink-resolved working directory, so each directory has its own file. Optional | `PiStateOptions.homeDir` |
-| `.pi-state/state.json` (working directory) | Σ itself, as `src/backend` reads and writes it; used when it exists | `PiStateOptions.statePath` |
-| `<agent dir>/pi-state/<key>/<session id>/state.json` | the same, with the same `<key>` and the id of the current pi session, so concurrent or successive sessions never share Σ; used when the working directory has none, and where a new state file is created. Resolved at the first `state_get` / `state_commit` of each session | `PiStateOptions.homeDir` |
+| `<agent dir>/pi-state/<key>/schema.json` | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below). `<key>` is the first 24 hex digits of the SHA-256 of the symlink-resolved working directory, so each directory has its own file. Optional | `PiStateOptions.schemaPath` |
+| `<agent dir>/pi-state/<key>/<session id>/state.json` | Σ itself, as `src/backend` reads and writes it, with the same `<key>` and the id of the current pi session, so concurrent or successive sessions never share Σ. A new state file is created here. Resolved at the first `state_get` / `state_commit` of each session | `PiStateOptions.statePath` |
 
-With neither schema file, the built-in default applies (see "Configure"). A new state
-file is created under the home directory, never in the working directory.
+Without a schema file, the built-in default applies (see "Configure"). Nothing is read or
+written relative to the working directory.
 
 **Environment variables.**
 

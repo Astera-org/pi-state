@@ -12,10 +12,8 @@ export interface ResolveStatePathOptions {
  * Finds the state file, in order:
  *
  * 1. `opts.statePath`, when set.
- * 2. `./.pi-state/state.json`, relative to pi's working directory, when it exists.
- * 3. `<agentDir>/pi-state/<projectKey>/<sessionId>/state.json` (see `projectPaths`),
- *    whether or not it exists: a state file that exists in neither location is created
- *    there, never in the working directory.
+ * 2. `<agentDir>/pi-state/<projectKey>/<sessionId>/state.json` (see `projectPath`),
+ *    whether or not it exists: a missing state file is created there.
  *
  * Logs which location was used.
  */
