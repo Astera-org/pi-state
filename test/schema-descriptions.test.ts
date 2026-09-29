@@ -1,15 +1,11 @@
 // Per-key `desc` prose: storage and byte ceiling.
 
 import { expect, test } from "vitest";
-import { described, MAX_DESC_BYTES, parseSchema } from "../src/agentstate/index.js";
+import { MAX_DESC_BYTES, parseSchema } from "../src/agentstate/index.js";
 
 test("a schema carries per-key prose", () => {
 	const schema = parseSchema(`{"keys":{"files":{"type":"object","desc":"path → why it was touched"}}}`);
 	expect(schema.keys.files.desc).toBe("path → why it was touched");
-	expect(described(schema)).toBe(true);
-
-	const bare = parseSchema(`{"keys":{"files":{"type":"object"}}}`);
-	expect(described(bare)).toBe(false);
 });
 
 // `desc` ships in every request, so it is capped at MAX_DESC_BYTES.

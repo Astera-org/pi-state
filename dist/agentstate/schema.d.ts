@@ -71,8 +71,6 @@ export declare function fieldSpec(field: Field): string;
 export declare function declaredTypes(schema: Schema): Record<string, string>;
 /** The whole declared key set as sorted `name type` pairs — the form a refusal quotes back. */
 export declare function declaredSummary(schema: Schema): string;
-/** Whether any declared key carries prose. */
-export declare function described(schema: Schema): boolean;
 /** Throws AgentStateSchemaError unless the schema is well-formed: `maxStateBytes` not
  * negative, `autoMaxStateBytesPercent` within 1-100, non-empty key names, `desc` within
  * MAX_DESC_BYTES, a known type per key, and `maxItems` present on lists only. */

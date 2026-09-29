@@ -28,7 +28,6 @@ export {
 	declaredKeys,
 	declaredSummary,
 	declaredTypes,
-	described,
 	fieldSpec,
 	Kind,
 	MAX_DESC_BYTES,
