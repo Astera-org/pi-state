@@ -20,6 +20,9 @@ function jsonSchemaType(kind) {
 /** One declared key's JSON Schema property. */
 function patchProperty(field) {
     const prop = { type: [jsonSchemaType(field.type), "null"] };
+    const desc = (field.desc ?? "").trim();
+    if (desc !== "")
+        prop.description = desc;
     if (field.type === Kind.List) {
         prop.maxItems = field.maxItems;
         prop.items = { type: LIST_ITEM_TYPES };

@@ -38,7 +38,7 @@ export interface Field {
     /** Required (> 0) for a list field, and rejected on every other kind. */
     maxItems?: number;
     /** What this key holds. Optional; at most MAX_DESC_BYTES bytes, because it is included
-     * in the system prompt of every request. */
+     * in every request's `state_commit` schema. */
     desc?: string;
 }
 /** The closed top-level key set an agent's Sigma may use, plus the byte cap on the
@@ -73,8 +73,6 @@ export declare function declaredTypes(schema: Schema): Record<string, string>;
 export declare function declaredSummary(schema: Schema): string;
 /** Whether any declared key carries prose. */
 export declare function described(schema: Schema): boolean;
-/** declaredSummary plus each key's prose: sorted `name (type) — what it holds`. */
-export declare function declaredGuide(schema: Schema): string;
 /** Throws AgentStateSchemaError unless the schema is well-formed: `maxStateBytes` not
  * negative, `autoMaxStateBytesPercent` within 1-100, non-empty key names, `desc` within
  * MAX_DESC_BYTES, a known type per key, and `maxItems` present on lists only. */
