@@ -81,19 +81,6 @@ export function declaredSummary(schema) {
 export function described(schema) {
     return Object.values(schema.keys).some((f) => (f.desc ?? "").trim() !== "");
 }
-/** declaredSummary plus each key's prose: sorted `name (type) — what it holds`. */
-export function declaredGuide(schema) {
-    const names = declaredKeys(schema);
-    if (names.length === 0)
-        return "no keys at all";
-    return names
-        .map((name) => {
-        const f = schema.keys[name];
-        const desc = (f.desc ?? "").trim();
-        return desc === "" ? `${name} (${fieldSpec(f)})` : `${name} (${fieldSpec(f)}) — ${desc}`;
-    })
-        .join("; ");
-}
 function schemaError(message) {
     return new AgentStateSchemaError(`${message}: invalid agent state schema`);
 }
@@ -119,7 +106,7 @@ export function validateSchema(schema) {
         const field = schema.keys[name];
         const descBytes = byteLength(field.desc ?? "");
         if (descBytes > MAX_DESC_BYTES) {
-            throw schemaError(`key ${quote(name)} describes itself in ${descBytes} bytes, over the ${MAX_DESC_BYTES}-byte ceiling — the prose ships in the system prompt of every request, so it is a clause and not a second prompt`);
+            throw schemaError(`key ${quote(name)} describes itself in ${descBytes} bytes, over the ${MAX_DESC_BYTES}-byte ceiling — the prose ships in every request's tool schema, so it is a clause and not a second prompt`);
         }
         switch (field.type) {
             case Kind.String:

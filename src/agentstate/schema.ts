@@ -79,7 +79,7 @@ export interface Field {
 	/** Required (> 0) for a list field, and rejected on every other kind. */
 	maxItems?: number;
 	/** What this key holds. Optional; at most MAX_DESC_BYTES bytes, because it is included
-	 * in the system prompt of every request. */
+	 * in every request's `state_commit` schema. */
 	desc?: string;
 }
 
@@ -138,19 +138,6 @@ export function described(schema: Schema): boolean {
 	return Object.values(schema.keys).some((f) => (f.desc ?? "").trim() !== "");
 }
 
-/** declaredSummary plus each key's prose: sorted `name (type) — what it holds`. */
-export function declaredGuide(schema: Schema): string {
-	const names = declaredKeys(schema);
-	if (names.length === 0) return "no keys at all";
-	return names
-		.map((name) => {
-			const f = schema.keys[name];
-			const desc = (f.desc ?? "").trim();
-			return desc === "" ? `${name} (${fieldSpec(f)})` : `${name} (${fieldSpec(f)}) — ${desc}`;
-		})
-		.join("; ");
-}
-
 function schemaError(message: string): AgentStateSchemaError {
 	return new AgentStateSchemaError(`${message}: invalid agent state schema`);
 }
@@ -178,7 +165,7 @@ export function validateSchema(schema: Schema): void {
 		const descBytes = byteLength(field.desc ?? "");
 		if (descBytes > MAX_DESC_BYTES) {
 			throw schemaError(
-				`key ${quote(name)} describes itself in ${descBytes} bytes, over the ${MAX_DESC_BYTES}-byte ceiling — the prose ships in the system prompt of every request, so it is a clause and not a second prompt`,
+				`key ${quote(name)} describes itself in ${descBytes} bytes, over the ${MAX_DESC_BYTES}-byte ceiling — the prose ships in every request's tool schema, so it is a clause and not a second prompt`,
 			);
 		}
 		switch (field.type) {

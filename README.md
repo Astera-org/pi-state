@@ -94,7 +94,7 @@ agent's state may hold:
 
 The grammar is the one `agentstate.parseSchema` accepts (see `src/agentstate` below): a
 closed key set, each key exactly one of five kinds, an optional per-key `desc` (at most
-160 bytes; it is included in the system prompt of every request), and a byte cap on the
+160 bytes; it is sent as the key's `description` in `state_commit`'s parameter schema on every request), and a byte cap on the
 merged document. `maxStateBytes` is optional; when omitted the cap is sized automatically
 (see "Auto sizing" under `src/entrypoint` below).
 

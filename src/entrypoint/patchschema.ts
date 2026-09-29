@@ -24,6 +24,8 @@ function jsonSchemaType(kind: Schema["keys"][string]["type"]): string {
 /** One declared key's JSON Schema property. */
 function patchProperty(field: Schema["keys"][string]): Record<string, unknown> {
 	const prop: Record<string, unknown> = { type: [jsonSchemaType(field.type), "null"] };
+	const desc = (field.desc ?? "").trim();
+	if (desc !== "") prop.description = desc;
 	if (field.type === Kind.List) {
 		prop.maxItems = field.maxItems;
 		prop.items = { type: LIST_ITEM_TYPES };

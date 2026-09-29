@@ -25,7 +25,6 @@ export {
 	DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT,
 	DEFAULT_BYTES_PER_TOKEN,
 	DEFAULT_MAX_STATE_BYTES,
-	declaredGuide,
 	declaredKeys,
 	declaredSummary,
 	declaredTypes,
