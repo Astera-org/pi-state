@@ -13,8 +13,8 @@ Mapping to the paper:
 
 - Σ is the paper's execution state.
 - `state_commit` is the paper's state patch (dict merge; `null` deletes a key).
-- Transcript replacement is the paper's bounded prompt (`boundary` mode).
-- In `paper` mode (below), P is the system prompt with the state contract appended, Σ_t is
+- Transcript replacement is the bounded prompt of the opt-in `boundary` mode.
+- In `paper` mode (below, the default), P is the system prompt with the state contract appended, Σ_t is
   the Σ message, and O_t is the trailing tool cycles after the newest user message.
 
 ## Install
@@ -117,10 +117,11 @@ fails installation:
 [pi-state] no schema file at custom/schema.json — declare your agent's Σ shape there (the JSON grammar agentstate.parseSchema accepts: {"keys":{...},"maxStateBytes":N}) before pi-state can register state_commit
 ```
 
-The agent calls `state_get`/`state_commit` to read and update Σ, and after any turn that
-commits at least one patch, `pi-state` replaces `pi`'s transcript with `[Σ, the newest
-user turn, the last few trailing tool cycles]` (see
-`src/entrypoint` and `src/stateboundary` below). No environment variables are required;
+The agent calls `state_get`/`state_commit` to read and update Σ, and on every model
+call `pi-state` builds the prompt as `[Σ, the newest user turn, the last few trailing
+tool cycles]` (see `src/entrypoint` and `src/stateboundary` below). With
+`PI_STATE_MODE=boundary`, it instead replaces `pi`'s transcript with that list after any
+turn that commits at least one patch. No environment variables are required;
 see **Environment variables** under `src/entrypoint` to tune or disable it.
 
 ## `src/agentstate`
@@ -177,8 +178,8 @@ The pi extension. `installPiState` (the module's default export, loaded via
   (`src/entrypoint/patchschema.ts`): one property per declared key, each unioned with
   `null` (a null value is how a patch deletes a key), and `additionalProperties: false`
   for the closed key set;
-- installs the transcript boundary (`src/stateboundary`'s `installStateBoundary`),
-  configured from the environment variables below.
+- installs the mode selected by `PI_STATE_MODE` (`src/stateboundary`'s `installPaperMode`,
+  or `installStateBoundary` for `boundary`), configured from the environment variables below.
 
 **File layout.** Files under `<agent dir>/pi-state/`:
 
@@ -195,17 +196,17 @@ written relative to the working directory.
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `PI_STATE_LOOP` | the state loop's on/off switch. Kill-switch semantics: unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it **on**; a recognized negative (`0`/`false`/`no`/`off`) turns it off; anything else is unrecognized and also refuses (fail closed) | **on** |
-| `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ (0–20) | `4`; `1` in `paper` mode |
+| `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ (0–20) | `1`; `4` in `boundary` mode |
 | `PI_CODING_AGENT_DIR` | pi's agent directory; the per-project schema and per-session state files above live in its `pi-state/` subdirectory | `~/.pi/agent` |
-| `PI_STATE_MODE` | `boundary` or `paper` (see "Modes" below). Any other value refuses installation (logged; tools stay registered) | `boundary` |
+| `PI_STATE_MODE` | `paper` or `boundary` (see "Modes" below). Any other value refuses installation (logged; tools stay registered) | `paper` |
 | `PI_STATE_REQUIRE_COMMIT` | `paper` mode only: `every`, `off`, or a positive integer K (see "Modes"). Any other value refuses installation | `every` |
 | `PI_STATE_CONTEXT_WINDOW_TOKENS` | a manual stopgap for auto sizing (below): the active model's context window, in tokens, on a `pi` this entrypoint cannot otherwise learn it from | unset |
 
 **Modes.** `PI_STATE_MODE` selects how Σ reaches the prompt.
 
-- `boundary` (default): after a turn that accepted a `state_commit`, replaces the
+- `boundary` (opt-in): after a turn that accepted a `state_commit`, replaces the
   transcript with `[Σ, newest user message, last N cycles]` via `replaceTranscript`.
-- `paper`: on every model call, the `context` event returns `[Σ message, newest user
+- `paper` (default): on every model call, the `context` event returns `[Σ message, newest user
   message, last N complete tool cycles]`, whether or not a commit happened this turn. No
   Σ yet shows `{}` at version 0. `N=0` keeps Σ and the user message only. A trailing
   window that cannot be paired falls back to Σ and the user message. The system prompt
@@ -225,7 +226,8 @@ written relative to the working directory.
   `state_get` calls are never blocked, and a message containing only `state_get` calls
   does not count toward K.
 
-  Run it: `PI_STATE_MODE=paper pi -e dist/entrypoint/index.js`.
+  Run it: `pi -e dist/entrypoint/index.js`. For boundary mode:
+  `PI_STATE_MODE=boundary pi -e dist/entrypoint/index.js`.
 
 **Auto sizing.** A schema that declares no `maxStateBytes` is sized as a percentage of
 the model's context window: `autoMaxStateBytesPercent` (1-100, default 10) percent of the

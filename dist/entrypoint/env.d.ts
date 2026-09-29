@@ -7,7 +7,7 @@ export declare const ENV_STATE_LOOP = "PI_STATE_LOOP";
 /** N, the number of trailing tool cycles kept alongside Σ. Unset means
  * `DEFAULT_TOOL_CYCLES`; see `parseToolCycles` for the parsing contract. */
 export declare const ENV_STATE_WINDOW_CYCLES = "PI_STATE_WINDOW_CYCLES";
-/** `boundary` (default) or `paper`; see `../stateboundary/paper.ts`. Other values refuse installation. */
+/** `paper` (default) or `boundary`; see `../stateboundary/paper.ts`. Other values refuse installation. */
 export declare const ENV_STATE_MODE = "PI_STATE_MODE";
 /** Paper mode: `every` (default), `off`, or a positive integer K. Other values refuse installation. */
 export declare const ENV_STATE_REQUIRE_COMMIT = "PI_STATE_REQUIRE_COMMIT";

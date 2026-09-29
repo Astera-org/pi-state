@@ -1,6 +1,6 @@
 // Maps this package's environment variables onto `StateWindowOptions`
 // (src/stateboundary/statewindow.ts), the object that module's fail-closed parsing runs
-// on. `PI_STATE_LOOP` is the kill switch; `PI_STATE_MODE` selects `boundary` or `paper`;
+// on. `PI_STATE_LOOP` is the kill switch; `PI_STATE_MODE` selects `paper` (default) or `boundary`;
 // `PI_STATE_REQUIRE_COMMIT` sets paper mode's commit enforcement.
 
 import type { PaperOptions, StateWindowOptions } from "../stateboundary/index.js";
@@ -15,7 +15,7 @@ export const ENV_STATE_LOOP = "PI_STATE_LOOP";
  * `DEFAULT_TOOL_CYCLES`; see `parseToolCycles` for the parsing contract. */
 export const ENV_STATE_WINDOW_CYCLES = "PI_STATE_WINDOW_CYCLES";
 
-/** `boundary` (default) or `paper`; see `../stateboundary/paper.ts`. Other values refuse installation. */
+/** `paper` (default) or `boundary`; see `../stateboundary/paper.ts`. Other values refuse installation. */
 export const ENV_STATE_MODE = "PI_STATE_MODE";
 
 /** Paper mode: `every` (default), `off`, or a positive integer K. Other values refuse installation. */

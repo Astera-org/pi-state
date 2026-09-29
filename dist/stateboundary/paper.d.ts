@@ -24,7 +24,7 @@ export interface PaperOptions {
 }
 export declare const PAPER_CONTRACT: string;
 export declare const PAPER_COMMIT_REQUIRED_REASON = "include a state_commit call in the same message as this action";
-/** `boundary` for unset or empty, `paper` for `paper`, otherwise the refusal. */
+/** `paper` for unset, empty or `paper`, `boundary` for `boundary`, otherwise the refusal. */
 export declare function stateModeSetting(raw: string | undefined): StateMode | StateWindowOff;
 /** Paper configuration, or the condition that refused it. The kill switch and cycle parsing are the boundary mode's. */
 export declare function paperSetting(options: PaperOptions): PaperConfig | StateWindowOff;

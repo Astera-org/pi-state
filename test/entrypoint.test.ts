@@ -67,7 +67,9 @@ afterEach(async () => {
 
 test("refuses loudly — throws — when this pi exposes no replaceTranscript", async () => {
 	const pi = fakePi({ replaceTranscript: undefined });
-	await expect(installPiState(pi, { schemaPath, statePath })).rejects.toThrow(/replaceTranscript/);
+	await expect(installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "boundary" } })).rejects.toThrow(
+		/replaceTranscript/,
+	);
 	// No tool or handler is registered.
 	expect(pi.tools.size).toBe(0);
 	expect(pi.handlers.length).toBe(0);
@@ -87,7 +89,7 @@ describe("the full chain: tool call -> file write -> Σ cache -> boundary -> rep
 		await installPiState(pi, {
 			schemaPath,
 			statePath,
-			env: { PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
+			env: { PI_STATE_MODE: "boundary", PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
 			log: (m) => logs.push(m),
 		});
 
@@ -188,7 +190,7 @@ describe("restart survival: Σ outlives the process", () => {
 		await installPiState(firstProcess, {
 			schemaPath,
 			statePath,
-			env: { PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
+			env: { PI_STATE_MODE: "boundary", PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
 		});
 		const commitResult = await firstProcess.tools
 			.get("state_commit")!
@@ -212,7 +214,7 @@ describe("restart survival: Σ outlives the process", () => {
 		await installPiState(secondProcess, {
 			schemaPath,
 			statePath,
-			env: { PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
+			env: { PI_STATE_MODE: "boundary", PI_STATE_LOOP: "true", PI_STATE_WINDOW_CYCLES: "1" },
 			log: (m) => logs.push(m),
 		});
 
@@ -350,16 +352,26 @@ describe("PI_STATE_MODE", () => {
 		expect(handlerEvents(pi)).toContain("context");
 	});
 
-	test("boundary still refuses a pi without replaceTranscript, whether mode is unset or explicit", async () => {
-		for (const env of [{}, { PI_STATE_MODE: "boundary" }]) {
+	test("unset and empty mode install paper mode, without a turn_end boundary", async () => {
+		for (const env of [{}, { PI_STATE_MODE: "" }]) {
 			const pi = fakePi({ replaceTranscript: undefined });
-			await expect(installPiState(pi, { schemaPath, statePath, env })).rejects.toThrow(/replaceTranscript/);
+			await installPiState(pi, { schemaPath, statePath, env });
+			const events = handlerEvents(pi);
+			expect(events).toContain("context");
+			expect(events).not.toContain("turn_end");
 		}
+	});
+
+	test("boundary refuses a pi without replaceTranscript", async () => {
+		const pi = fakePi({ replaceTranscript: undefined });
+		await expect(installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "boundary" } })).rejects.toThrow(
+			/replaceTranscript/,
+		);
 	});
 
 	test("boundary installs the turn_end boundary and no paper handlers", async () => {
 		const pi = fakePi();
-		await installPiState(pi, { schemaPath, statePath, env: {} });
+		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_MODE: "boundary" } });
 		const events = handlerEvents(pi);
 		expect(events).toContain("turn_end");
 		for (const event of ["before_agent_start", "context", "message_end", "tool_call"])
@@ -374,7 +386,8 @@ describe("PI_STATE_MODE", () => {
 			return handler?.({ systemPrompt: "base" }, {}) as { systemPrompt: string } | undefined;
 		};
 		expect((await prompt({ PI_STATE_MODE: "paper" }))?.systemPrompt).toMatch(/^base\n\n.*state_commit/s);
-		expect(await prompt({})).toBeUndefined();
+		expect((await prompt({}))?.systemPrompt).toMatch(/^base\n\n.*state_commit/s);
+		expect(await prompt({ PI_STATE_MODE: "boundary" })).toBeUndefined();
 	});
 
 	test("paper defaults to one trailing cycle and PI_STATE_WINDOW_CYCLES=0 keeps none", async () => {
@@ -444,7 +457,11 @@ describe("PI_STATE_MODE", () => {
 
 	test("PI_STATE_REQUIRE_COMMIT is not read in boundary mode", async () => {
 		const pi = fakePi();
-		await installPiState(pi, { schemaPath, statePath, env: { PI_STATE_REQUIRE_COMMIT: "bogus" } });
+		await installPiState(pi, {
+			schemaPath,
+			statePath,
+			env: { PI_STATE_MODE: "boundary", PI_STATE_REQUIRE_COMMIT: "bogus" },
+		});
 		expect(handlerEvents(pi)).toContain("turn_end");
 	});
 });
