@@ -200,7 +200,7 @@ test("parseSchema reads autoMaxStateBytesPercent on a schema with no maxStateByt
 });
 
 // A schema with neither maxStateBytes nor autoMaxStateBytesPercent uses auto sizing at
-// DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (10).
+// DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT (50).
 test("a schema with no maxStateBytes and no autoMaxStateBytesPercent is still auto, at the default percent", () => {
 	const s = parseSchema(`{"keys":{"a":{"type":"string"}}}`);
 	expect(s.maxStateBytes).toBeUndefined();
@@ -263,8 +263,8 @@ describe("resolveAutoMaxStateBytes", () => {
 	// resolveAutoMaxStateBytes has no default percent; callers pass
 	// DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT.
 	test("the default-percent case: a caller passing DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT", () => {
-		expect(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT).toBe(10);
-		expect(resolveAutoMaxStateBytes(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, 100000)).toBe(40000);
+		expect(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT).toBe(50);
+		expect(resolveAutoMaxStateBytes(DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, 100000)).toBe(200000);
 	});
 
 	test.each([

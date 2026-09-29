@@ -171,6 +171,6 @@ describe("the built-in default schema", () => {
 			log: () => {},
 		});
 		const payload = JSON.parse((await pi.tools.get("state_get")!.execute("g", {})).content[0]!.text);
-		expect(payload.maxStateBytes).toBe(40000);
+		expect(payload.maxStateBytes).toBe(200000);
 	});
 });

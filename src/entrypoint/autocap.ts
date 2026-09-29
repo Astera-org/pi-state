@@ -8,12 +8,7 @@
 //   2. `ENV_STATE_CONTEXT_WINDOW_TOKENS` (`env.ts`), used at install time (no session,
 //      hence no model yet) or when `pi` reports no model.
 
-import {
-	DEFAULT_AUTO_MAX_STATE_BYTES_CEILING,
-	DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT,
-	resolveAutoMaxStateBytes,
-	type Schema,
-} from "../agentstate/index.js";
+import { DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT, resolveAutoMaxStateBytes, type Schema } from "../agentstate/index.js";
 import { ENV_STATE_CONTEXT_WINDOW_TOKENS } from "./env.js";
 
 /** Reads `ENV_STATE_CONTEXT_WINDOW_TOKENS`, floored to an integer. Returns undefined
@@ -57,9 +52,7 @@ export function applyAutoMaxStateBytes(
 	if ((declaredMaxStateBytes ?? 0) > 0) return;
 	if (contextWindowTokens === undefined) return;
 	const percent = schema.autoMaxStateBytesPercent ?? DEFAULT_AUTO_MAX_STATE_BYTES_PERCENT;
-	const sized = resolveAutoMaxStateBytes(percent, contextWindowTokens);
-	const bytes =
-		schema.autoMaxStateBytesPercent === undefined ? Math.min(sized, DEFAULT_AUTO_MAX_STATE_BYTES_CEILING) : sized;
+	const bytes = resolveAutoMaxStateBytes(percent, contextWindowTokens);
 	if (schema.maxStateBytes === bytes) return;
 	schema.maxStateBytes = bytes;
 	log(
