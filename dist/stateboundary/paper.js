@@ -1,6 +1,6 @@
 /**
  * Paper mode: the prompt is rebuilt on every model call as [Σ, newest user turn, last N
- * complete tool cycles], and every action must arrive with a `state_commit`. Nothing
+ * complete tool cycles], and every action must arrive with a `state_commit`; `state_get` is exempt. Nothing
  * here calls `replaceTranscript`; pi's transcript is left as is and only the per-call
  * context is projected.
  *
@@ -8,7 +8,7 @@
  * O_t is the trailing cycles.
  */
 import { boundaryMessages } from "./stateboundary.js";
-import { isStateCommitToolName, quoted, sigmaFromResult, stateCommitCache, stateWindowSetting, } from "./statewindow.js";
+import { isStateCommitToolName, isStateGetToolName, quoted, sigmaFromResult, stateCommitCache, stateWindowSetting, } from "./statewindow.js";
 /** Cycle depth used in paper mode when N is not configured. */
 const PAPER_DEFAULT_TOOL_CYCLES = 1;
 export const PAPER_CONTRACT = "You are an execution agent working from a persisted state. You do NOT see earlier turns: " +
@@ -16,7 +16,7 @@ export const PAPER_CONTRACT = "You are an execution agent working from a persist
     "Everything else has been discarded.\n\n" +
     "Persist everything you will need later (plans, findings, progress, file paths, decisions) with state_commit; nothing else survives. " +
     "state_commit merges a patch onto Σ; a null value deletes a key. Pass the version shown in Σ.\n\n" +
-    "Call state_commit in the same message as each action (every other tool call).";
+    "Call state_commit in the same message as each action (every other tool call except state_get).";
 export const PAPER_COMMIT_REQUIRED_REASON = "include a state_commit call in the same message as this action";
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
 /** `boundary` for unset or empty, `paper` for `paper`, otherwise the refusal. */
@@ -111,14 +111,15 @@ export function installPaperMode(pi, config, deps = {}) {
         return;
     pi.on("message_end", (event) => {
         const names = toolCallNames(event.message);
-        if (names === null)
+        if (names === null || names.every(isStateGetToolName))
             return undefined;
         latestHasCommit = names.some(isStateCommitToolName);
         commitless = latestHasCommit ? 0 : commitless + 1;
         return undefined;
     });
     pi.on("tool_call", (event) => {
-        if (latestHasCommit || isStateCommitToolName(event.toolName))
+        const toolName = event.toolName;
+        if (latestHasCommit || isStateCommitToolName(toolName) || isStateGetToolName(toolName))
             return undefined;
         if (requireCommit !== "every" && commitless < requireCommit)
             return undefined;

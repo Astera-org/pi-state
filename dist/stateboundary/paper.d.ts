@@ -1,6 +1,6 @@
 /**
  * Paper mode: the prompt is rebuilt on every model call as [Σ, newest user turn, last N
- * complete tool cycles], and every action must arrive with a `state_commit`. Nothing
+ * complete tool cycles], and every action must arrive with a `state_commit`; `state_get` is exempt. Nothing
  * here calls `replaceTranscript`; pi's transcript is left as is and only the per-call
  * context is projected.
  *

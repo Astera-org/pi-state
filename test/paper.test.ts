@@ -234,6 +234,27 @@ describe("installPaperMode: commit enforcement", () => {
 		expect(h.call("tool_call", { toolName: "read" })).toBeUndefined();
 	});
 
+	test("every: allows a lone state_get, including the MCP-prefixed name", () => {
+		const h = install({ requireCommit: "every" });
+		expect(toolCallOutcome(h, ["read"], "read")).toMatchObject({ block: true });
+		expect(toolCallOutcome(h, ["state_get"], "state_get")).toBeUndefined();
+		expect(toolCallOutcome(h, ["mcp__sproot__state_get"], "mcp__sproot__state_get")).toBeUndefined();
+	});
+
+	test("every: a non-state call alongside state_get without a state_commit is blocked", () => {
+		const h = install({ requireCommit: "every" });
+		h.call("message_end", { message: callsMsg(["a", "state_get"], ["b", "read"]) });
+		expect(h.call("tool_call", { toolName: "state_get" })).toBeUndefined();
+		expect(h.call("tool_call", { toolName: "read" })).toEqual({ block: true, reason: PAPER_COMMIT_REQUIRED_REASON });
+	});
+
+	test("K: a message of only state_get calls leaves the commit-less count unchanged", () => {
+		const h = install({ requireCommit: "2" });
+		expect(toolCallOutcome(h, ["read"], "read")).toBeUndefined();
+		expect(toolCallOutcome(h, ["state_get", "state_get"], "state_get")).toBeUndefined();
+		expect(toolCallOutcome(h, ["read"], "read")).toMatchObject({ block: true });
+	});
+
 	test("off: never blocks and registers no enforcement handlers", () => {
 		const h = install({ requireCommit: "off" });
 		expect(toolCallOutcome(h, ["read"], "read")).toBeUndefined();
