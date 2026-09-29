@@ -1,6 +1,4 @@
 import { type Schema } from "../agentstate/index.js";
-/** Schema path relative to pi's working directory, beside DEFAULT_STATE_PATH. */
-export declare const DEFAULT_SCHEMA_PATH = ".pi-state/schema.json";
 export interface ResolveSchemaOptions {
     /** An explicit schema file. When set, it is the only source consulted. */
     schemaPath?: string;
@@ -12,8 +10,8 @@ export interface ResolveSchemaOptions {
  * Finds the schema, in order:
  *
  * 1. `opts.schemaPath`, when set; a missing file throws.
- * 2. `./.pi-state/schema.json` (DEFAULT_SCHEMA_PATH, relative to pi's working directory).
- * 3. `~/.pi-state/schema.json`.
+ * 2. `./.pi-state/schema.json`, relative to pi's working directory.
+ * 3. `<agentDir>/pi-state/<projectKey>/schema.json` (see `projectPaths`).
  * 4. The built-in default (defaultschema.ts).
  *
  * Only a missing file (ENOENT) falls through to the next source; a file that exists but
