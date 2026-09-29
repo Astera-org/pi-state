@@ -123,7 +123,9 @@ describe("schema lookup chain", () => {
 	test("the replaceTranscript check still runs before any schema lookup", async () => {
 		await writeHomeSchema("{ not json");
 		const pi = { ...fakePi(), replaceTranscript: undefined };
-		await expect(installPiState(pi, { homeDir })).rejects.toThrow(/replaceTranscript/);
+		await expect(installPiState(pi, { homeDir, env: { PI_STATE_MODE: "boundary" } })).rejects.toThrow(
+			/replaceTranscript/,
+		);
 	});
 });
 

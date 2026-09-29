@@ -68,11 +68,11 @@ function toolCallOutcome(h: ReturnType<typeof install>, names: string[], target:
 beforeEach(() => resetStateCommitCache());
 
 describe("stateModeSetting", () => {
-	test("unset, empty and boundary select boundary; paper selects paper", () => {
-		expect(stateModeSetting(undefined)).toBe("boundary");
-		expect(stateModeSetting("")).toBe("boundary");
-		expect(stateModeSetting("boundary")).toBe("boundary");
+	test("unset, empty and paper select paper; boundary selects boundary", () => {
+		expect(stateModeSetting(undefined)).toBe("paper");
+		expect(stateModeSetting("")).toBe("paper");
 		expect(stateModeSetting("paper")).toBe("paper");
+		expect(stateModeSetting("boundary")).toBe("boundary");
 	});
 
 	test("any other spelling is refused as a fault", () => {

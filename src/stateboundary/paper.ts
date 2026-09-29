@@ -51,10 +51,10 @@ export const PAPER_COMMIT_REQUIRED_REASON = "include a state_commit call in the 
 
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
 
-/** `boundary` for unset or empty, `paper` for `paper`, otherwise the refusal. */
+/** `paper` for unset, empty or `paper`, `boundary` for `boundary`, otherwise the refusal. */
 export function stateModeSetting(raw: string | undefined): StateMode | StateWindowOff {
-	if (raw === undefined || raw === "" || raw === "boundary") return "boundary";
-	if (raw === "paper") return "paper";
+	if (raw === undefined || raw === "" || raw === "paper") return "paper";
+	if (raw === "boundary") return "boundary";
 	return {
 		condition: "state-mode",
 		fault: true,
