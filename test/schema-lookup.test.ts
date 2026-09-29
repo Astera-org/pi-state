@@ -1,10 +1,10 @@
 // The schema lookup chain: explicit schemaPath, ./.pi-state/schema.json,
-// ~/.pi-state/schema.json, then the built-in default.
+// <agent dir>/pi-state/<key>/schema.json, then the built-in default.
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { declaredKeys, declaredTypes, MAX_DESC_BYTES } from "../src/agentstate/index.js";
 import { defaultSchema } from "../src/entrypoint/defaultschema.js";
 import { installPiState, type PiExtensionAPI, type PiToolDefinition } from "../src/entrypoint/index.js";
@@ -57,9 +57,11 @@ beforeEach(async () => {
 	homeDir = await mkdtemp(join(tmpdir(), "pi-state-home-"));
 	process.chdir(projectDir);
 	logs = [];
+	vi.stubEnv("PI_CODING_AGENT_DIR", "");
 });
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	process.chdir(originalCwd);
 	await rm(projectDir, { recursive: true, force: true });
 	await rm(homeDir, { recursive: true, force: true });

@@ -81,7 +81,7 @@ and `open_questions` (list, max 8). It declares no `maxStateBytes`, so the cap i
 automatically (see "Auto sizing" under `src/entrypoint` below).
 
 To replace the default, create `.pi-state/schema.json` relative to `pi`'s working
-directory (or `~/.pi-state/projects/<key>/schema.json`, where `<key>` identifies the working directory), naming every key the
+directory (or `<agent dir>/pi-state/<key>/schema.json`, where `<agent dir>` is `$PI_CODING_AGENT_DIR` if set, else `~/.pi/agent`, and `<key>` identifies the working directory), naming every key the
 agent's state may hold:
 
 ```json
@@ -104,7 +104,7 @@ The schema is looked up in this order, and the source used is logged to stderr:
 
 1. `PiStateOptions.schemaPath`, when set;
 2. `.pi-state/schema.json` in `pi`'s working directory;
-3. `~/.pi-state/projects/<key>/schema.json`;
+3. `<agent dir>/pi-state/<key>/schema.json`;
 4. the built-in default.
 
 Only a missing file moves on to the next source. A schema with no keys is valid but
@@ -184,9 +184,9 @@ The pi extension. `installPiState` (the module's default export, loaded via
 | File | Purpose | Override |
 | --- | --- | --- |
 | `.pi-state/schema.json` (working directory) | the operator-authored state schema, in the exact JSON grammar `agentstate.parseSchema` accepts (`{"keys":{...},"maxStateBytes":N}`, `maxStateBytes` optional — see "Auto sizing" below). Optional | `PiStateOptions.schemaPath` |
-| `~/.pi-state/projects/<key>/schema.json` | the same; used when the working directory has none. `<key>` is the first 16 hex digits of the SHA-256 of the symlink-resolved working directory, so each directory has its own file. Optional | `PiStateOptions.homeDir` |
+| `<agent dir>/pi-state/<key>/schema.json` | the same; used when the working directory has none. `<key>` is the first 24 hex digits of the SHA-256 of the symlink-resolved working directory, so each directory has its own file. Optional | `PiStateOptions.homeDir` |
 | `.pi-state/state.json` (working directory) | Σ itself, as `src/backend` reads and writes it; used when it exists | `PiStateOptions.statePath` |
-| `~/.pi-state/projects/<key>/state.json` | the same, with the same `<key>`; used when the working directory has none, and where a new state file is created | `PiStateOptions.homeDir` |
+| `<agent dir>/pi-state/<key>/state.json` | the same, with the same `<key>`; used when the working directory has none, and where a new state file is created | `PiStateOptions.homeDir` |
 
 With neither schema file, the built-in default applies (see "Configure"). A new state
 file is created under the home directory, never in the working directory.
@@ -197,6 +197,7 @@ file is created under the home directory, never in the working directory.
 | --- | --- | --- |
 | `PI_STATE_LOOP` | the state loop's on/off switch. Kill-switch semantics: unset or a recognized affirmative (`1`/`true`/`yes`/`on`) leaves it **on**; a recognized negative (`0`/`false`/`no`/`off`) turns it off; anything else is unrecognized and also refuses (fail closed) | **on** |
 | `PI_STATE_WINDOW_CYCLES` | N, the number of trailing tool cycles kept alongside Σ (0–20) | `4`; `1` in `paper` mode |
+| `PI_CODING_AGENT_DIR` | pi's agent directory; the per-project files above live in its `pi-state/` subdirectory | `~/.pi/agent` |
 | `PI_STATE_MODE` | `boundary` or `paper` (see "Modes" below). Any other value refuses installation (logged; tools stay registered) | `boundary` |
 | `PI_STATE_REQUIRE_COMMIT` | `paper` mode only: `every`, `off`, or a positive integer K (see "Modes"). Any other value refuses installation | `every` |
 | `PI_STATE_CONTEXT_WINDOW_TOKENS` | a manual stopgap for auto sizing (below): the active model's context window, in tokens, on a `pi` this entrypoint cannot otherwise learn it from | unset |

@@ -69,8 +69,9 @@ export interface PiStateOptions {
 	/** An explicit schema file; a missing one is an error. When unset, the schema is looked
 	 * up as described at `loadschema.ts`'s `resolveSchema`. */
 	schemaPath?: string;
-	/** Where `.pi-state/schema.json` and `.pi-state/state.json` are looked up after the
-	 * working directory. Defaults to `os.homedir()`. Exposed for tests. */
+	/** Home directory of the `<home>/.pi/agent` fallback (used when `PI_CODING_AGENT_DIR`
+	 * is unset), where `pi-state/<key>/{schema,state}.json` are looked up after the working
+	 * directory. Defaults to `os.homedir()`. Exposed for tests. */
 	homeDir?: string;
 	/** An explicit state file. When unset, the path is resolved as described at
 	 * `statepath.ts`'s `resolveStatePath`. */

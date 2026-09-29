@@ -11,7 +11,7 @@ export interface ResolveSchemaOptions {
  *
  * 1. `opts.schemaPath`, when set; a missing file throws.
  * 2. `./.pi-state/schema.json`, relative to pi's working directory.
- * 3. `~/.pi-state/projects/<projectKey>/schema.json` (see `projectPaths`).
+ * 3. `<agentDir>/pi-state/<projectKey>/schema.json` (see `projectPaths`).
  * 4. The built-in default (defaultschema.ts).
  *
  * Only a missing file (ENOENT) falls through to the next source; a file that exists but

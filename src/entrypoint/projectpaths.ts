@@ -1,27 +1,32 @@
 // Lookup locations shared by `resolveSchema` and `resolveStatePath`: the working
-// directory's `.pi-state/<file>`, then a per-project file under the home directory.
+// directory's `.pi-state/<file>`, then a per-project file under pi's agent directory.
 
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/** Directory under the home directory holding one subdirectory per project. */
-const HOME_PROJECTS_DIR = ".pi-state/projects";
+/** Environment variable overriding pi's agent directory. */
+const AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 
-/** First 16 hex digits of the SHA-256 of the symlink-resolved working directory. */
+/** pi's agent directory: `$PI_CODING_AGENT_DIR` when set, else `<home>/.pi/agent`. */
+function agentDir(homeDir?: string): string {
+	return process.env[AGENT_DIR_ENV] || join(homeDir ?? homedir(), ".pi", "agent");
+}
+
+/** First 24 hex digits of the SHA-256 of the symlink-resolved working directory (pi's `cwdKey`). */
 async function projectKey(): Promise<string> {
 	const cwd = await realpath(process.cwd());
-	return createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+	return createHash("sha256").update(cwd).digest("hex").slice(0, 24);
 }
 
 /**
  * The lookup locations for `file` (`schema.json` or `state.json`): the path relative to
- * the working directory, and `<home>/.pi-state/projects/<projectKey>/<file>`.
+ * the working directory, and `<agentDir>/pi-state/<projectKey>/<file>`.
  */
 export async function projectPaths(file: string, homeDir?: string): Promise<{ cwdPath: string; homePath: string }> {
 	return {
 		cwdPath: join(".pi-state", file),
-		homePath: join(homeDir ?? homedir(), HOME_PROJECTS_DIR, await projectKey(), file),
+		homePath: join(agentDir(homeDir), "pi-state", await projectKey(), file),
 	};
 }

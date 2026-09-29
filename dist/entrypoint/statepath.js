@@ -18,7 +18,7 @@ async function exists(path) {
  *
  * 1. `opts.statePath`, when set.
  * 2. `./.pi-state/state.json`, relative to pi's working directory, when it exists.
- * 3. `~/.pi-state/projects/<projectKey>/state.json` (see `projectPaths`), whether or not it exists: a state file that exists in
+ * 3. `<agentDir>/pi-state/<projectKey>/state.json` (see `projectPaths`), whether or not it exists: a state file that exists in
  *    neither location is created there, never in the working directory.
  *
  * Logs which location was used.

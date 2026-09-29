@@ -1,11 +1,11 @@
 // The state path lookup chain: explicit statePath, ./.pi-state/state.json (when it
-// exists), then ~/.pi-state/state.json (created when absent).
+// exists), then <agent dir>/pi-state/<key>/state.json (created when absent).
 
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { dirname, join, sep } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { installPiState, type PiExtensionAPI, type PiToolDefinition } from "../src/entrypoint/index.js";
 import { projectPaths } from "../src/entrypoint/projectpaths.js";
 import { resolveStatePath } from "../src/entrypoint/statepath.js";
@@ -45,9 +45,11 @@ beforeEach(async () => {
 	homeDir = await mkdtemp(join(tmpdir(), "pi-state-home-"));
 	process.chdir(projectDir);
 	logs = [];
+	vi.stubEnv("PI_CODING_AGENT_DIR", "");
 });
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	process.chdir(originalCwd);
 	await rm(projectDir, { recursive: true, force: true });
 	await rm(homeDir, { recursive: true, force: true });
@@ -121,6 +123,17 @@ describe("state path lookup chain", () => {
 			process.chdir(projectDir);
 			await rm(otherDir, { recursive: true, force: true });
 		}
+	});
+
+	test("PI_CODING_AGENT_DIR replaces ~/.pi/agent as the base directory", async () => {
+		vi.stubEnv("PI_CODING_AGENT_DIR", join(homeDir, "agent"));
+		const path = await resolve();
+		expect(path.startsWith(join(homeDir, "agent", "pi-state") + sep)).toBe(true);
+		expect(path).not.toContain(join(".pi", "agent"));
+	});
+
+	test("the default base directory is <home>/.pi/agent", async () => {
+		expect((await resolve()).startsWith(join(homeDir, ".pi", "agent", "pi-state") + sep)).toBe(true);
 	});
 
 	test("a symlinked working directory resolves to the same home file as its target", async () => {
