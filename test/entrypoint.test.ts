@@ -309,14 +309,14 @@ describe("auto sizing (the default for a schema with no maxStateBytes): resolvin
 	});
 
 	test("model_select re-resolves it against the newly selected model", async () => {
-		await writeAutoSchema({ autoMaxStateBytesPercent: 50 });
+		await writeAutoSchema({ autoMaxStateBytesPercent: 25 });
 		const pi = fakePi();
 		await installPiState(pi, { schemaPath, statePath, env: {} });
 		expect(await maxStateBytesFromStateGet(pi)).toBe(4096);
 
 		const event = { type: "model_select", model: { contextWindow: 100000 }, source: "set" };
 		for (const h of pi.handlers) if (h.event === "model_select") h.handler(event, {});
-		expect(await maxStateBytesFromStateGet(pi)).toBe(200000); // 50% of 100000 tokens * 4 bytes/token
+		expect(await maxStateBytesFromStateGet(pi)).toBe(100000); // 25% of 100000 tokens * 4 bytes/token
 	});
 
 	test("an explicit maxStateBytes in the schema file always wins over auto sizing", async () => {

@@ -75,9 +75,9 @@ describe("applyAutoMaxStateBytes", () => {
 	});
 
 	test("an explicit autoMaxStateBytesPercent overrides the default", () => {
-		const schema = autoSchema({ autoMaxStateBytesPercent: 50 });
+		const schema = autoSchema({ autoMaxStateBytesPercent: 25 });
 		applyAutoMaxStateBytes(schema, undefined, 200000, () => {});
-		expect(schema.maxStateBytes).toBe(400000);
+		expect(schema.maxStateBytes).toBe(200000);
 	});
 
 	test("an explicit maxStateBytes overrides auto sizing on a 1M-token context window", () => {
