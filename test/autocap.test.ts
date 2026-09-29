@@ -3,7 +3,7 @@
 // window, or from the env-var fallback when the model is unavailable.
 
 import { describe, expect, test } from "vitest";
-import type { Schema } from "../src/agentstate/index.js";
+import { DEFAULT_AUTO_MAX_STATE_BYTES_CEILING, type Schema } from "../src/agentstate/index.js";
 import {
 	applyAutoMaxStateBytes,
 	contextWindowFromModelHolder,
@@ -59,19 +59,32 @@ describe("applyAutoMaxStateBytes", () => {
 		return { keys: {}, ...overrides };
 	}
 
-	test("resolves maxStateBytes from the context window at the default percent", () => {
+	test("resolves maxStateBytes from a small context window at the default percent", () => {
 		const schema = autoSchema();
 		const logs: string[] = [];
-		applyAutoMaxStateBytes(schema, undefined, 200000, (m) => logs.push(m));
-		expect(schema.maxStateBytes).toBe(520000); // 65% of 200000 tokens * 4 bytes/token
+		applyAutoMaxStateBytes(schema, undefined, 100000, (m) => logs.push(m));
+		expect(schema.maxStateBytes).toBe(40000); // 10% of 100000 tokens * 4 bytes/token
 		expect(logs).toHaveLength(1);
-		expect(logs[0]).toContain("520000 bytes");
+		expect(logs[0]).toContain("40000 bytes");
+	});
+
+	test("a 1M-token context window is capped at the absolute ceiling", () => {
+		const schema = autoSchema();
+		applyAutoMaxStateBytes(schema, undefined, 1_000_000, () => {});
+		expect(schema.maxStateBytes).toBe(DEFAULT_AUTO_MAX_STATE_BYTES_CEILING);
+		expect(DEFAULT_AUTO_MAX_STATE_BYTES_CEILING).toBe(65536);
 	});
 
 	test("an explicit autoMaxStateBytesPercent overrides the default", () => {
 		const schema = autoSchema({ autoMaxStateBytesPercent: 50 });
 		applyAutoMaxStateBytes(schema, undefined, 200000, () => {});
 		expect(schema.maxStateBytes).toBe(400000);
+	});
+
+	test("an explicit maxStateBytes overrides auto sizing on a 1M-token context window", () => {
+		const schema = autoSchema({ maxStateBytes: 200000 });
+		applyAutoMaxStateBytes(schema, 200000, 1_000_000, () => {});
+		expect(schema.maxStateBytes).toBe(200000);
 	});
 
 	test("no-ops when the schema file itself declared an explicit maxStateBytes", () => {
@@ -92,9 +105,9 @@ describe("applyAutoMaxStateBytes", () => {
 		const schema = autoSchema();
 		const logs: string[] = [];
 		const log = (m: string) => logs.push(m);
-		applyAutoMaxStateBytes(schema, undefined, 100000, log); // install-time env-var value
-		applyAutoMaxStateBytes(schema, undefined, 200000, log); // live session_start value
-		expect(schema.maxStateBytes).toBe(520000);
+		applyAutoMaxStateBytes(schema, undefined, 50000, log); // install-time env-var value
+		applyAutoMaxStateBytes(schema, undefined, 100000, log); // live session_start value
+		expect(schema.maxStateBytes).toBe(40000);
 		expect(logs).toHaveLength(2);
 	});
 
