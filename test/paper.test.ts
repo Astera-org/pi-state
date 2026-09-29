@@ -249,9 +249,11 @@ describe("installPaperMode: commit enforcement", () => {
 	});
 
 	test("K: a message of only state_get calls leaves the commit-less count unchanged", () => {
-		const h = install({ requireCommit: "2" });
+		const h = install({ requireCommit: "3" });
 		expect(toolCallOutcome(h, ["read"], "read")).toBeUndefined();
 		expect(toolCallOutcome(h, ["state_get", "state_get"], "state_get")).toBeUndefined();
+		expect(toolCallOutcome(h, ["state_get"], "state_get")).toBeUndefined();
+		expect(toolCallOutcome(h, ["read"], "read")).toBeUndefined();
 		expect(toolCallOutcome(h, ["read"], "read")).toMatchObject({ block: true });
 	});
 
